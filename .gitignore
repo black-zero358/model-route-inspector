@@ -1,0 +1,14 @@
+# OS / editor
+.DS_Store
+Thumbs.db
+desktop.ini
+*.swp
+*~
+
+# Runtime / caches
+node_modules/
+*.log
+.cache/
+
+# Packed releases (zip is built ad hoc)
+*.zip

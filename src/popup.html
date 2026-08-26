@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <title>Model Route Inspector</title>
+  <link rel="stylesheet" href="popup.css" />
+</head>
+<body>
+  <header class="hdr">
+    <div class="hdr-title">Model Route Inspector</div>
+    <div class="tabs">
+      <button class="tab active" data-tab="records">记录</button>
+      <button class="tab" data-tab="diag">诊断</button>
+    </div>
+  </header>
+
+  <!-- ============ 记录页 ============ -->
+  <section id="tab-records" class="tab-panel active">
+    <section class="stats" id="stats"></section>
+
+    <section class="list-wrap">
+      <div class="list-hdr">
+        <span>最近请求</span>
+        <div class="list-hdr-btns">
+          <button id="btn-floating" class="btn tiny ghost">悬浮卡: 开</button>
+          <button id="btn-json" class="btn tiny">JSON</button>
+          <button id="btn-csv" class="btn tiny">CSV</button>
+          <button id="btn-clear" class="btn tiny danger">清空</button>
+        </div>
+      </div>
+      <div id="list" class="list"></div>
+    </section>
+  </section>
+
+  <!-- ============ 诊断页 ============ -->
+  <section id="tab-diag" class="tab-panel">
+    <div class="diag-hdr">
+      <span id="diag-page" class="diag-page"></span>
+      <button id="btn-diag-refresh" class="btn tiny">刷新</button>
+    </div>
+    <div id="diag-body" class="diag-body"></div>
+  </section>
+
+  <template id="tpl-item">
+    <div class="item">
+      <div class="item-row">
+        <span class="dot"></span>
+        <span class="time"></span>
+        <span class="models"></span>
+        <span class="status"></span>
+      </div>
+      <div class="detail"></div>
+    </div>
+  </template>
+
+  <script src="popup.js"></script>
+</body>
+</html>
