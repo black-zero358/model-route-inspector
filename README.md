@@ -105,7 +105,7 @@ Content-Type: text/event-stream
 - SSE / JSON event 数量
 - generation stream 是否成功识别
 
-Popup 会统计总请求数、一致/不一致/待确认或冲突次数、模型出现次数，以及每轮历史记录。
+Popup 会统计总请求数、一致/不一致/待确认或冲突次数、模型出现次数，以及每轮历史记录。统计累计范围为上次清空后，历史仅保留最近 1000 条；两者超过 1000 轮后不会相等。
 
 ---
 
@@ -223,7 +223,9 @@ records produced
 
 数据仅保存在本地 `chrome.storage.local`。
 
-未知 metadata key 只记录字段名称，不保存对应值，也不会猜测未知字段的具体含义。
+未知 metadata key 只记录字段名称与类型，不保存对应值，也不会猜测未知字段的具体含义。已知字段同样按类型白名单净化，不保留任意嵌套对象。请求 URL 去除 query/hash，只保留安全接口路径。
+
+历史仅允许扩展可信上下文直接读取。后台验证消息发送者与用途，并在 content script / 后台两层净化数据。网页 MAIN world 中的观测数据仍属于可被页面伪造的客户端证据；消息标记、字段白名单和模型名称都不构成服务器身份认证。
 
 ---
 
@@ -236,7 +238,11 @@ Popup 支持：
 - 清空历史
 - 悬浮卡开关
 
-历史最多保留最近 1000 轮。
+历史最多保留最近 1000 轮。记录、清空、设置与导出按收到的顺序排队，避免并发快照覆盖；写入失败会返回错误，不把未保存的记录计入统计。重复 requestId 在当前保留窗口内去重。
+
+CSV 会对公式前缀添加单引号，以便用电子表格安全打开。JSON 导出保留原有安全标量值，以及字段来源和 null/空字符串/类型异常状态；CSV 是扁平展示，不完整表达字段状态。
+
+采集计时从发起 fetch 前开始：Response headers、First byte、First text、First reasoning、Complete 分别计到对应观测时点；Total 到观察分支运输结束。First delta 为首个回答文本或推理片段出现时点的兼容指标；推理先出现时它等于 First reasoning，应按用途优先查看两个独立指标。`streamComplete` 表示看到了完成标志，`transportCanceled` / `aborted` 表示观察分支的运输取消，两者可以同时为 true。取消原因没有用户行为证据时保持未知，不推断为用户主动停止。服务端 TTFVT 使用独立时钟，不能与浏览器指标相加。
 
 ---
 
@@ -266,12 +272,19 @@ model-route-inspector/
 ## 测试
 
 ```bash
-node test/run-tests.js
-node test/regression-test.js
-node test/integration-test.js
+pnpm exec node test/run-tests.js
+pnpm exec node test/regression-test.js
+pnpm exec node test/integration-test.js
+pnpm exec node test/core-regression.js
+pnpm exec node test/storage-regression.js
+pnpm exec node test/ui-contract.js
 ```
 
-测试覆盖 SSE 分块、真实字段结构 fixture、generation 识别、模型判定、敏感字段过滤，以及原始响应流不被破坏等场景。
+测试覆盖 SSE 分块、真实字段结构 fixture、generation 识别、模型判定、敏感字段过滤，以及原始响应流不被破坏等场景。核心回归自带 `test/fixtures/compatibility-2026-10-08.json`，包含六种已观察场景的安全协议结构与路由字段，不依赖上一级证据目录；正文、资源引用和凭据均未纳入该 fixture。存储测试使用模拟 Chrome API 验证并发与失败恢复，不替代真实多标签页和重启持久化验收。
+
+本地合成 UI 预览可运行 `pnpm exec node test/ui-preview.js`，访问 `http://127.0.0.1:4173/popup` 或 `/card`。预览使用合成元数据，不代表已安装扩展验收。`/baseline` 对照依赖原始 `a3f2d82` 提交；ZIP 或浅克隆缺少该提交时，对照明确返回不可用，当前预览仍可使用。
+
+在上一级验证目录运行 `pnpm run test:all`，包括 2026-10-08 的安全结构回放与修复回归。本次为本地源码修改，版本号仍为 0.1.0，未表示发布。原始版在线兼容性结果不能作为修复版在线验收；范围见上一级审查报告。
 
 ---
 
@@ -288,4 +301,4 @@ node test/integration-test.js
 
 ## Repository
 
-https://github.com/Liuxd-1230/model-route-inspector
+https://github.com/black-zero358/model-route-inspector
