@@ -8,6 +8,17 @@ const sourceRoot = path.resolve(__dirname, '../src');
 let passed = 0;
 function check(name, condition) { assert.ok(condition, name); passed++; console.log('PASS ' + name); }
 const copy = value => structuredClone(value);
+function csvRows(text) {
+  const rows = [[]]; let value = '', quoted = false;
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i];
+    if (c === '"') { if (quoted && text[i + 1] === '"') { value += '"'; i++; } else quoted = !quoted; }
+    else if (!quoted && (c === ',' || c === '\n')) { rows.at(-1).push(value); value = ''; if (c === '\n') rows.push([]); }
+    else if (!quoted && c === '\r') continue;
+    else value += c;
+  }
+  rows.at(-1).push(value); return rows;
+}
 const record = (id, extra = {}) => ({ requestId: 'synthetic-' + id, endpoint: '/backend-api/f/conversation', url: 'https://chatgpt.com/backend-api/f/conversation', requestedModel: 'gpt-6', resolvedModel: 'gpt-6', serverModel: 'gpt-6', status: 'match', startedAt: 1000, endedAt: 2000, ...extra });
 function harness(initial = {}) {
   let data = copy(initial), onMessage, onInstalled, failNext;
@@ -35,12 +46,39 @@ function harness(initial = {}) {
   const chat = { id: runtime.id, tab: { id: 1, url: 'https://chatgpt.com/' }, url: 'https://chatgpt.com/', frameId: 0 };
   const popup = { id: runtime.id, url: runtime.getURL('src/popup.html') };
   return {
-    send: (message, sender = ['mri-record', 'mri-content-ready', 'mri-disable-floating'].includes(message.type) ? chat : popup) => new Promise(resolve => { onMessage(message, sender, resolve); }),
+    send: (message, sender = ['mri-record', 'mri-content-ready', 'mri-disable-floating', 'mri-content-history'].includes(message.type) ? chat : popup) => new Promise(resolve => { onMessage(message, sender, resolve); }),
     raw: message => new Promise(resolve => onMessage(message, chat, resolve)),
     state: () => copy(data), fail: method => { failNext = method; }, installed: () => onInstalled(), notifications, badges, broadcasts, access
   };
 }
 (async () => {
+  {
+    const h = harness();
+    await h.send({ type: 'mri-record', record: record('inline', {
+      assistantMessageIds: ['reply-one', 'reply-one', 'unsafe id', { body: 'private' }], inputMessageIds: ['input-one'], parentMessageId: 'input-one', requestAction: 'variant', requestedParentMessageId: 'input-one',
+      requestedThinkingEffort: 'max', firstTokenMs: 40, firstTokenSource: 'marker.reasoning', toolEvidence: 'observed',
+      toolCalls: [{ name: 'web.run', count: null, status: 'observed', durationMs: null, arguments: 'private', result: 'private' }, { name: 'invalid name', count: 1 }, { name: 'python', count: -1, status: 'invented', durationMs: -1 }],
+      reasoningStartTime: 1, fieldSources: { requestedThinkingEffort: 'request.body.thinking_effort' }
+    }) });
+    const saved = h.state().records[0];
+    check('inline identity arrays are bounded typed deduplicated identifiers', saved.assistantMessageIds.join(',') === 'reply-one' && saved.inputMessageIds.join(',') === 'input-one');
+    check('tool projection excludes opaque arguments/results and preserves unknown values', saved.toolCalls.length === 2 && saved.toolCalls[0].count === null && saved.toolCalls[1].count === null && saved.toolCalls[1].status === 'observed' && saved.toolCalls[1].durationMs === null && !JSON.stringify(saved).includes('private'));
+    const history = await h.send({ type: 'mri-content-history' });
+    check('content history restores only inline safe fields including explicit variant parent', history.ok && history.records[0].firstTokenMs === 40 && history.records[0].requestedThinkingEffort === 'max' && history.records[0].requestAction === 'variant' && history.records[0].requestedParentMessageId === 'input-one' && !('reasoningStartTime' in history.records[0]) && !('fieldSources' in history.records[0]) && !('stats' in history));
+    const csv = await h.send({ type: 'mri-export-csv' }), json = await h.send({ type: 'mri-export-json' });
+    const [columns, cells] = csvRows(csv.csv), exported = JSON.parse(json.json).records[0];
+    const newFields = ['requestId', 'inputMessageIds', 'assistantMessageIds', 'parentMessageId', 'requestedThinkingEffort', 'firstTokenMs', 'firstTokenSource', 'toolEvidence', 'toolCalls', 'requestAction', 'requestedParentMessageId'];
+    check('JSON/CSV exports preserve all eleven new safe fields without lossy object strings', newFields.every(key => cells[columns.indexOf(key)] === (Array.isArray(exported[key]) ? JSON.stringify(exported[key]) : String(exported[key]))) && !csv.csv.includes('[object Object]') && columns.length === cells.length && columns.length === 61);
+    const badFrame = await h.send({ type: 'mri-content-history' }, { id: 'synthetic-extension', tab: { id: 1 }, frameId: 2, url: 'https://chatgpt.com/' });
+    const foreign = await h.send({ type: 'mri-content-history' }, { id: 'synthetic-extension', tab: { id: 1 }, frameId: 0, url: 'https://example.com/' });
+    const missingTab = await h.send({ type: 'mri-content-history' }, { id: 'synthetic-extension', url: 'https://chatgpt.com/' });
+    check('content history rejects non-top frame foreign origin and no tab', [badFrame, foreign, missingTab].every(v => v.error === 'unauthorized-sender'));
+    await h.send({ type: 'mri-record', record: record('invalid-inline', { firstTokenSource: 'invented', toolEvidence: 'success', parentMessageId: 'unsafe id', requestedParentMessageId: 'unsafe id', requestAction: 'private action' }) });
+    const invalid = h.state().records[1];
+    check('inline source evidence actions and parent IDs reject unknown formats', !invalid.firstTokenSource && !invalid.toolEvidence && !invalid.parentMessageId && !invalid.requestedParentMessageId && !invalid.requestAction);
+    await h.send({ type: 'mri-record', record: record('empty-variant', { requestAction: '', requestedParentMessageId: '' }) });
+    check('empty action and request parent are rejected rather than persisted as usable IDs', !('requestAction' in h.state().records[2]) && !('requestedParentMessageId' in h.state().records[2]));
+  }
   {
     const h = harness();
     const responses = await Promise.all(Array.from({ length: 25 }, (_, index) => h.send({ type: 'mri-record', record: record(index) })));

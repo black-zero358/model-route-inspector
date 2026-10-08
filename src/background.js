@@ -6,11 +6,12 @@ const MAX_RECORDS = 1000;
 const DEFAULT_SETTINGS = { floatingEnabled: true, notifyOnMismatch: true };
 const BADGE_COLORS = { match: '#16a34a', mismatch: '#dc2626', unknown: '#ca8a04', conflict: '#ea580c' };
 const STATUS_KEYS = { match: 'matchCount', mismatch: 'mismatchCount', conflict: 'conflictCount', unknown: 'unknownCount' };
-const NUMBER_FIELDS = new Set(('startedAt endedAt timestamp responseStatus serverTtfvt searchToolCallCount firstByteMs firstDeltaMs totalMs responseHeadersMs firstTextMs firstReasoningMs completionMs reasoningStartTime reasoningEndTime reasoningDurationMs finishedDurationSec').split(' '));
+const NUMBER_FIELDS = new Set(('startedAt endedAt timestamp responseStatus serverTtfvt searchToolCallCount firstByteMs firstDeltaMs totalMs responseHeadersMs firstTextMs firstTokenMs firstReasoningMs completionMs reasoningStartTime reasoningEndTime reasoningDurationMs finishedDurationSec').split(' '));
 const BOOLEAN_FIELDS = new Set(('isAutoswitcherEnabled didAutoSwitchToReasoning fastConvo conduitPrewarmed isFirstTurn resumeWithWebsockets toolInvoked isSearch isMultimodal didPromptContainImage conflict aborted streamComplete transportCanceled').split(' '));
-const STRING_FIELDS = new Set(('requestId conversationId messageId serverRequestId turnExchangeId turnTraceId requestedModel defaultModel resolvedModel serverModel messageModel modelSlug requestedExperience thinkingEffort autoSwitcherRaceWinner planType planTypeBucket productExperience turnMode turnUseCase warmupState clusterRegion region transport contentType status reason cancelReason timingSource toolName').split(' '));
+const STRING_FIELDS = new Set(('requestId conversationId messageId parentMessageId requestAction requestedParentMessageId serverRequestId turnExchangeId turnTraceId requestedModel defaultModel resolvedModel serverModel messageModel modelSlug requestedExperience thinkingEffort requestedThinkingEffort autoSwitcherRaceWinner planType planTypeBucket productExperience turnMode turnUseCase warmupState clusterRegion region transport contentType status reason cancelReason timingSource toolName firstTokenSource toolEvidence').split(' '));
 const ARRAY_FIELDS = new Set(['modelSwitcherDeny', 'searchToolQueryTypes', 'completionSignals']);
-const ALLOWED_FIELDS = new Set([...NUMBER_FIELDS, ...BOOLEAN_FIELDS, ...STRING_FIELDS, ...ARRAY_FIELDS, 'url', 'endpoint', 'captureLimited']);
+const ID_ARRAY_FIELDS = new Set(['assistantMessageIds', 'inputMessageIds']);
+const ALLOWED_FIELDS = new Set([...NUMBER_FIELDS, ...BOOLEAN_FIELDS, ...STRING_FIELDS, ...ARRAY_FIELDS, ...ID_ARRAY_FIELDS, 'toolCalls', 'url', 'endpoint', 'captureLimited']);
 const own = (obj, key) => Object.prototype.hasOwnProperty.call(obj, key);
 const prettyModel = MRI.prettyModel || (value => value || 'unknown');
 function freshStats() {
@@ -65,6 +66,8 @@ function sanitizeRecord(record) {
     if (NUMBER_FIELDS.has(key) && typeof value === 'number' && Number.isFinite(value) && value >= 0) result[key] = value;
     else if (BOOLEAN_FIELDS.has(key) && typeof value === 'boolean') result[key] = value;
     else if (STRING_FIELDS.has(key) && typeof value === 'string' && value.length <= 256) result[key] = value;
+    else if (ID_ARRAY_FIELDS.has(key) && Array.isArray(value)) result[key] = [...new Set(value.slice(0, 32).filter(v => typeof v === 'string' && /^[a-zA-Z0-9_-]{1,128}$/.test(v)))];
+    else if (key === 'toolCalls' && Array.isArray(value)) result[key] = value.slice(0, 32).filter(v => v && typeof v === 'object' && !Array.isArray(v) && typeof v.name === 'string' && /^[a-zA-Z][a-zA-Z0-9_.:-]{0,79}$/.test(v.name)).map(v => ({ name: v.name, count: Number.isSafeInteger(v.count) && v.count >= 0 ? v.count : null, status: ['observed', 'in_progress', 'completed', 'failed', 'canceled'].includes(v.status) ? v.status : 'observed', durationMs: typeof v.durationMs === 'number' && Number.isFinite(v.durationMs) && v.durationMs >= 0 ? v.durationMs : null }));
     else if (ARRAY_FIELDS.has(key) && Array.isArray(value)) {
       result[key] = value.slice(0, 32).filter(item => typeof item === 'string' && item.length <= 128);
       if (key === 'completionSignals') result[key] = result[key].filter(item => item === '[DONE]' || item === 'message_stream_complete');
@@ -82,6 +85,11 @@ function sanitizeRecord(record) {
     }
   }
   if (!own(STATUS_KEYS, result.status)) result.status = 'unknown';
+  if (result.parentMessageId && !/^[a-zA-Z0-9_-]{1,128}$/.test(result.parentMessageId)) delete result.parentMessageId;
+  if (own(result, 'requestedParentMessageId') && result.requestedParentMessageId !== null && !/^[a-zA-Z0-9_-]{1,128}$/.test(result.requestedParentMessageId)) delete result.requestedParentMessageId;
+  if (own(result, 'requestAction') && result.requestAction !== null && !['next', 'variant', 'continue'].includes(result.requestAction)) delete result.requestAction;
+  if (result.firstTokenSource && !['assistant.text', 'assistant.reasoning', 'marker.user_visible', 'marker.reasoning'].includes(result.firstTokenSource)) delete result.firstTokenSource;
+  if (result.toolEvidence && !['observed', 'not_observed'].includes(result.toolEvidence)) delete result.toolEvidence;
   return result;
 }
 function historyOf(value) { return Array.isArray(value) ? value.slice(-MAX_RECORDS).map(sanitizeRecord) : []; }
@@ -143,19 +151,21 @@ function csvEscape(value) {
 }
 function recordsToCsv(records) {
   const headers = ['timestamp', 'status', 'endpoint', 'responseStatus', 'requestedModel', 'resolvedModel', 'serverModel', 'messageModel', 'defaultModel', 'requestedExperience', 'productExperience', 'turnMode', 'turnUseCase', 'thinkingEffort', 'isAutoswitcherEnabled', 'didAutoSwitchToReasoning', 'fastConvo', 'warmupState', 'conduitPrewarmed', 'isFirstTurn', 'planType', 'planTypeBucket', 'clusterRegion', 'region', 'serverTtfvt', 'transport', 'resumeWithWebsockets', 'toolInvoked', 'toolName', 'isSearch', 'isMultimodal', 'didPromptContainImage', 'responseHeadersMs', 'firstByteMs', 'firstDeltaMs', 'firstTextMs', 'firstReasoningMs', 'completionMs', 'totalMs', 'reasoningDurationMs', 'streamComplete', 'completionSignals', 'transportCanceled', 'cancelReason', 'captureLimited', 'conversationId', 'messageId', 'serverRequestId', 'turnTraceId', 'reason'];
+  headers.push('requestId', 'inputMessageIds', 'assistantMessageIds', 'parentMessageId', 'requestedThinkingEffort', 'firstTokenMs', 'firstTokenSource', 'toolEvidence', 'toolCalls', 'requestAction', 'requestedParentMessageId');
   return [headers.join(','), ...records.map(record => headers.map(key => {
+    if ((ID_ARRAY_FIELDS.has(key) || key === 'toolCalls') && Array.isArray(record[key])) return csvEscape(JSON.stringify(record[key]));
     if (key !== 'timestamp') return csvEscape(record[key]);
     const date = new Date(record.timestamp || record.endedAt || record.startedAt || 0);
     return Number.isFinite(date.getTime()) ? date.toISOString() : '';
   }).join(','))].join('\r\n');
 }
 function isChatSender(sender) {
-  if (!sender || !sender.tab || sender.frameId && sender.frameId !== 0) return false;
+  if (!sender || !sender.tab || !Number.isInteger(sender.tab.id) || sender.tab.id < 0 || sender.frameId && sender.frameId !== 0) return false;
   try { return ['https://chatgpt.com', 'https://chat.openai.com'].includes(new URL(sender.url || sender.tab.url).origin); }
   catch (_) { return false; }
 }
 function isPopupSender(sender) { return !!sender && sender.url === chrome.runtime.getURL('src/popup.html'); }
-const CONTENT_MESSAGES = new Set(['mri-record', 'mri-content-ready', 'mri-disable-floating']);
+const CONTENT_MESSAGES = new Set(['mri-record', 'mri-content-ready', 'mri-disable-floating', 'mri-content-history']);
 const POPUP_MESSAGES = new Set(['mri-get-data', 'mri-clear', 'mri-set-floating', 'mri-export-json', 'mri-export-csv']);
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (!message || typeof message !== 'object') return;
@@ -176,6 +186,10 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       return { ok: true };
     }
     const records = historyOf(data.records), stats = statsOf(data.stats);
+    if (message.type === 'mri-content-history') {
+      const fields = ['requestId', 'conversationId', 'messageId', 'assistantMessageIds', 'inputMessageIds', 'parentMessageId', 'requestAction', 'requestedParentMessageId', 'requestedModel', 'serverModel', 'resolvedModel', 'messageModel', 'status', 'thinkingEffort', 'requestedThinkingEffort', 'firstTokenMs', 'firstTokenSource', 'totalMs', 'completionMs', 'streamComplete', 'transportCanceled', 'captureLimited', 'toolCalls', 'toolEvidence'];
+      return { ok: true, records: records.map(record => Object.fromEntries(fields.filter(key => own(record, key)).map(key => [key, record[key]]))) };
+    }
     if (message.type === 'mri-export-csv') return { ok: true, csv: recordsToCsv(records) };
     if (message.type === 'mri-export-json') return { ok: true, json: JSON.stringify({ exportedAt: new Date().toISOString(), records, stats }, null, 2) };
     return { ok: true, records, stats, settings: settingsOf(data.settings) };
