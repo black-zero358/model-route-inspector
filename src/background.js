@@ -1,300 +1,192 @@
-/*
- * background.js — service worker
- *  - 接收 content script 转发的路由记录
- *  - 写入 chrome.storage.local（最近 1000 轮）
- *  - 维护统计、更新工具栏徽章
- *  - 模型切换时发送系统通知
- *  - 响应 popup 的查询 / 导出 / 清空 / 设置请求
- */
-importScripts('parser.js', 'detector.js');
-
+/* Service worker: bounded metadata storage, serialized mutations and popup queries. */
+'use strict';
+importScripts('detector.js');
 const MRI = self.__MRI__ || {};
-const shortBadge = MRI.shortBadge || function (s) { return s ? String(s).slice(0, 4) : '?'; };
-const prettyModel = MRI.prettyModel || function (s) { return s || 'unknown'; };
-
 const MAX_RECORDS = 1000;
-const STORE_KEYS = {
-  RECORDS: 'records',
-  STATS: 'stats',
-  SETTINGS: 'settings'
-};
-
-const BADGE_COLORS = {
-  match: '#16a34a',
-  mismatch: '#dc2626',
-  unknown: '#ca8a04',
-  conflict: '#ea580c'
-};
-
-const DEFAULT_SETTINGS = {
-  floatingEnabled: true,
-  notifyOnMismatch: true
-};
-
-const DEFAULT_STATS = {
-  totalRequests: 0,
-  mismatchCount: 0,
-  conflictCount: 0,
-  unknownCount: 0,
-  matchCount: 0,
-  modelCounts: {},
-      lastModel: null,
-  lastConversationId: null
-};
-
-function nowTs() { return Date.now(); }
-
-function getStore(keys) {
-  return new Promise(function (resolve) {
-    chrome.storage.local.get(keys, function (res) { resolve(res || {}); });
-  });
+const DEFAULT_SETTINGS = { floatingEnabled: true, notifyOnMismatch: true };
+const BADGE_COLORS = { match: '#16a34a', mismatch: '#dc2626', unknown: '#ca8a04', conflict: '#ea580c' };
+const STATUS_KEYS = { match: 'matchCount', mismatch: 'mismatchCount', conflict: 'conflictCount', unknown: 'unknownCount' };
+const NUMBER_FIELDS = new Set(('startedAt endedAt timestamp responseStatus serverTtfvt searchToolCallCount firstByteMs firstDeltaMs totalMs responseHeadersMs firstTextMs firstReasoningMs completionMs reasoningStartTime reasoningEndTime reasoningDurationMs finishedDurationSec').split(' '));
+const BOOLEAN_FIELDS = new Set(('isAutoswitcherEnabled didAutoSwitchToReasoning fastConvo conduitPrewarmed isFirstTurn resumeWithWebsockets toolInvoked isSearch isMultimodal didPromptContainImage conflict aborted streamComplete transportCanceled').split(' '));
+const STRING_FIELDS = new Set(('requestId conversationId messageId serverRequestId turnExchangeId turnTraceId requestedModel defaultModel resolvedModel serverModel messageModel modelSlug requestedExperience thinkingEffort autoSwitcherRaceWinner planType planTypeBucket productExperience turnMode turnUseCase warmupState clusterRegion region transport contentType status reason cancelReason timingSource toolName').split(' '));
+const ARRAY_FIELDS = new Set(['modelSwitcherDeny', 'searchToolQueryTypes', 'completionSignals']);
+const ALLOWED_FIELDS = new Set([...NUMBER_FIELDS, ...BOOLEAN_FIELDS, ...STRING_FIELDS, ...ARRAY_FIELDS, 'url', 'endpoint', 'captureLimited']);
+const own = (obj, key) => Object.prototype.hasOwnProperty.call(obj, key);
+const prettyModel = MRI.prettyModel || (value => value || 'unknown');
+function freshStats() {
+  return { totalRequests: 0, mismatchCount: 0, conflictCount: 0, unknownCount: 0, matchCount: 0, modelCounts: Object.create(null), lastModel: null, lastConversationId: null };
 }
-function setStore(obj) {
-  return new Promise(function (resolve) {
-    chrome.storage.local.set(obj, function () { resolve(); });
-  });
+function settingsOf(value) {
+  const result = { ...DEFAULT_SETTINGS };
+  for (const key of Object.keys(result)) if (value && typeof value[key] === 'boolean') result[key] = value[key];
+  return result;
 }
-
-async function getSettings() {
-  const r = await getStore(STORE_KEYS.SETTINGS);
-  return Object.assign({}, DEFAULT_SETTINGS, r[STORE_KEYS.SETTINGS] || {});
+function statsOf(value) {
+  const result = freshStats();
+  if (!value || typeof value !== 'object') return result;
+  for (const key of ['totalRequests', ...Object.values(STATUS_KEYS)]) if (Number.isSafeInteger(value[key]) && value[key] >= 0) result[key] = value[key];
+  for (const [key, count] of Object.entries(value.modelCounts || {})) if (key.length <= 256 && Number.isSafeInteger(count) && count >= 0) result.modelCounts[key] = count;
+  for (const key of ['lastModel', 'lastConversationId']) if (typeof value[key] === 'string') result[key] = value[key].slice(0, 256);
+  return result;
 }
-
-async function getStats() {
-  const r = await getStore(STORE_KEYS.STATS);
-  return Object.assign({}, DEFAULT_STATS, r[STORE_KEYS.STATS] || {});
+// Clear, export, settings and incoming records share one operation ordering.
+// Failure is returned to the caller and must not poison the next queued operation.
+let storeQueue = Promise.resolve();
+function serialized(task) {
+  const result = storeQueue.then(task);
+  storeQueue = result.catch(() => {});
+  return result;
 }
-
-function updateBadge(rec) {
-  try {
-    const actual = rec.serverModel || rec.resolvedModel || rec.requestedModel || rec.modelSlug;
-    const text = shortBadge(actual);
-    chrome.action.setBadgeText({ text: text });
-    chrome.action.setBadgeBackgroundColor({ color: BADGE_COLORS[rec.status] || '#555' });
-    const title = 'Model Route Inspector\n' +
-      (actual ? prettyModel(actual) : 'unknown') + '\n' +
-      (rec.reason || rec.status);
-    chrome.action.setTitle({ title: title });
-  } catch (_) { /* ignore */ }
-}
-
-async function maybeNotify(rec, settings, stats) {
-  if (!settings.notifyOnMismatch) return;
-  if (rec.status !== 'mismatch') return;
-  // “仅模型发生变化时通知”：与上一轮实际模型不同才通知
-  const actual = rec.serverModel || rec.resolvedModel;
-  if (stats.lastModel && actual && stats.lastModel === actual) return;
-  try {
-    chrome.notifications.create('mri_' + rec.requestId, {
-      type: 'basic',
-      iconUrl: chrome.runtime.getURL('icons/icon128.png'),
-      title: 'ChatGPT 模型切换',
-      message: prettyModel(rec.requestedModel) + ' → ' + prettyModel(actual),
-      priority: 2
+function storage(method, value) {
+  return new Promise((resolve, reject) => {
+    chrome.storage.local[method](value, result => {
+      if (chrome.runtime.lastError) reject(new Error('storage-unavailable'));
+      else resolve(result || {});
     });
-  } catch (_) { /* ignore */ }
+  });
 }
-
-async function handleRecord(rec) {
-  // 安全：只保留路由元数据，剔除任何可能夹带的正文字段
-  const safe = sanitizeRecord(rec);
-  safe.timestamp = safe.endedAt || safe.startedAt || nowTs();
-
-  const store = await getStore([STORE_KEYS.RECORDS, STORE_KEYS.STATS, STORE_KEYS.SETTINGS]);
-  const records = Array.isArray(store[STORE_KEYS.RECORDS]) ? store[STORE_KEYS.RECORDS] : [];
-  const stats = Object.assign({}, DEFAULT_STATS, store[STORE_KEYS.STATS] || {});
-  const settings = Object.assign({}, DEFAULT_SETTINGS, store[STORE_KEYS.SETTINGS] || {});
-
+function safePath(value, absolute) {
+  if (typeof value !== 'string' || value.length > 2048) return null;
+  try {
+    const parsed = new URL(value, 'https://chatgpt.com');
+    if (!['https://chatgpt.com', 'https://chat.openai.com'].includes(parsed.origin)) return null;
+    // Drop query/hash and identifier-bearing paths; routing does not need them.
+    const match = parsed.pathname.match(/^\/backend-api\/(?:(?:f|v\d+(?:\.\d+)*)\/){0,2}(?:conversation(?:\/prepare|\/init)?|stop_conversation)\/?$/);
+    return match ? (absolute ? parsed.origin : '') + parsed.pathname : null;
+  } catch (_) { return null; }
+}
+function sanitizeRecord(record) {
+  const result = {};
+  if (!record || typeof record !== 'object' || Array.isArray(record)) return result;
+  for (const key of ALLOWED_FIELDS) {
+    if (!own(record, key)) continue;
+    const value = record[key];
+    if (value === null) { result[key] = null; continue; }
+    if (NUMBER_FIELDS.has(key) && typeof value === 'number' && Number.isFinite(value) && value >= 0) result[key] = value;
+    else if (BOOLEAN_FIELDS.has(key) && typeof value === 'boolean') result[key] = value;
+    else if (STRING_FIELDS.has(key) && typeof value === 'string' && value.length <= 256) result[key] = value;
+    else if (ARRAY_FIELDS.has(key) && Array.isArray(value)) {
+      result[key] = value.slice(0, 32).filter(item => typeof item === 'string' && item.length <= 128);
+      if (key === 'completionSignals') result[key] = result[key].filter(item => item === '[DONE]' || item === 'message_stream_complete');
+    } else if (key === 'captureLimited' && (typeof value === 'boolean' || typeof value === 'string' && value.length <= 128)) result[key] = value;
+    else if (key === 'url' || key === 'endpoint') result[key] = safePath(value, key === 'url');
+  }
+  for (const key of ['fieldSources', 'fieldStates']) {
+    const map = record[key];
+    result[key] = {};
+    if (!map || typeof map !== 'object' || Array.isArray(map)) continue;
+    for (const field of ALLOWED_FIELDS) {
+      if (!own(map, field) || typeof map[field] !== 'string') continue;
+      const value = map[field];
+      if (key === 'fieldStates' ? ['value', 'null', 'empty', 'invalid'].includes(value) : value.length <= 256 && /^[a-zA-Z0-9_.$/[\]-]+$/.test(value)) result[key][field] = value;
+    }
+  }
+  if (!own(STATUS_KEYS, result.status)) result.status = 'unknown';
+  return result;
+}
+function historyOf(value) { return Array.isArray(value) ? value.slice(-MAX_RECORDS).map(sanitizeRecord) : []; }
+function consumeApiError() { void chrome.runtime.lastError; }
+function updateBadge(record) {
+  const actual = record.serverModel || record.resolvedModel || record.messageModel || record.requestedModel || record.modelSlug;
+  chrome.action.setBadgeText({ text: MRI.shortBadge ? MRI.shortBadge(actual) : (actual || '?').slice(0, 4) }, consumeApiError);
+  chrome.action.setBadgeBackgroundColor({ color: BADGE_COLORS[record.status] || '#555' }, consumeApiError);
+  chrome.action.setTitle({ title: 'Model Route Inspector\n' + prettyModel(actual) + '\n' + (record.reason || record.status) }, consumeApiError);
+}
+function maybeNotify(record, settings, previousModel) {
+  const actual = record.serverModel || record.resolvedModel;
+  if (!settings.notifyOnMismatch || record.status !== 'mismatch' || !actual || previousModel === actual) return;
+  chrome.notifications.create('mri_' + record.requestId, { type: 'basic', iconUrl: chrome.runtime.getURL('icons/icon128.png'), title: 'ChatGPT 模型切换', message: prettyModel(record.requestedModel) + ' → ' + prettyModel(actual), priority: 2 }, consumeApiError);
+}
+async function handleRecord(record) {
+  const safe = sanitizeRecord(record);
+  if (!safe.requestId || !safe.endpoint) throw new Error('invalid-record');
+  safe.timestamp = safe.endedAt || safe.startedAt || Date.now();
+  const data = await storage('get', ['records', 'stats', 'settings']);
+  const records = historyOf(data.records);
+  if (records.some(item => item.requestId === safe.requestId)) return { ok: true, duplicate: true };
+  const stats = statsOf(data.stats), previousModel = stats.lastModel, settings = settingsOf(data.settings);
   records.push(safe);
-  if (records.length > MAX_RECORDS) records.splice(0, records.length - MAX_RECORDS);
-
+  if (records.length > MAX_RECORDS) records.shift();
   stats.totalRequests++;
-  if (safe.status === 'match') stats.matchCount++;
-  else if (safe.status === 'mismatch') stats.mismatchCount++;
-  else if (safe.status === 'conflict') stats.conflictCount++;
-  else stats.unknownCount++;
-
-  const actualKey = safe.serverModel || safe.resolvedModel || safe.messageModel || safe.requestedModel || safe.modelSlug || 'unknown';
-  stats.modelCounts[actualKey] = (stats.modelCounts[actualKey] || 0) + 1;
-  stats.lastModel = actualKey;
-  stats.lastConversationId = safe.conversationId;
-
-  await setStore({
-    records: records,
-    stats: stats,
-    settings: settings
-  });
-
+  stats[STATUS_KEYS[safe.status]]++;
+  const actual = safe.serverModel || safe.resolvedModel || safe.messageModel || safe.requestedModel || safe.modelSlug || 'unknown';
+  stats.modelCounts[actual] = (stats.modelCounts[actual] || 0) + 1;
+  // Notification comparison requires actual routing evidence, not a Requested fallback.
+  stats.lastModel = safe.serverModel || safe.resolvedModel || null;
+  stats.lastConversationId = safe.conversationId || null;
+  await storage('set', { records, stats });
   updateBadge(safe);
-  maybeNotify(safe, settings, stats);
+  maybeNotify(safe, settings, previousModel);
+  return { ok: true };
 }
-
-// 白名单：只保存模型路由/调度/传输相关元数据，绝不保存正文与凭据
-const ALLOWED_FIELDS = [
-  // identity
-  'requestId', 'url', 'endpoint', 'startedAt', 'endedAt', 'timestamp',
-  'conversationId', 'messageId', 'serverRequestId', 'turnExchangeId', 'turnTraceId',
-  // routing
-  'requestedModel', 'defaultModel', 'resolvedModel', 'serverModel', 'messageModel', 'modelSlug',
-  'requestedExperience', 'thinkingEffort',
-  'isAutoswitcherEnabled', 'didAutoSwitchToReasoning', 'autoSwitcherRaceWinner', 'modelSwitcherDeny',
-  // product / account
-  'planType', 'planTypeBucket', 'productExperience', 'turnMode', 'turnUseCase',
-  // serving
-  'fastConvo', 'warmupState', 'conduitPrewarmed', 'isFirstTurn',
-  // infrastructure
-  'clusterRegion', 'region', 'serverTtfvt',
-  // transport
-  'transport', 'responseStatus', 'contentType', 'resumeWithWebsockets',
-  // task
-  'toolInvoked', 'toolName', 'isSearch', 'searchToolCallCount', 'searchToolQueryTypes',
-  'isMultimodal', 'didPromptContainImage',
-  // timing
-  'firstByteMs', 'firstDeltaMs', 'totalMs',
-  'reasoningStartTime', 'reasoningEndTime', 'reasoningDurationMs', 'finishedDurationSec',
-  // result
-  'status', 'reason', 'conflict', 'fieldSources', 'aborted'
-];
-
-function sanitizeRecord(rec) {
-  const out = {};
-  if (!rec || typeof rec !== 'object') return out;
-  for (let i = 0; i < ALLOWED_FIELDS.length; i++) {
-    const k = ALLOWED_FIELDS[i];
-    if (rec[k] !== undefined) out[k] = rec[k];
-  }
-  return out;
-}
-
-function csvEscape(v) {
-  if (v === null || v === undefined) return '';
-  const s = String(v);
-  if (/[",\n\r]/.test(s)) return '"' + s.replace(/"/g, '""') + '"';
-  return s;
-}
-
-function recordsToCsv(records) {
-  const headers = [
-    'timestamp', 'status', 'endpoint', 'responseStatus',
-    'requestedModel', 'resolvedModel', 'serverModel', 'messageModel', 'defaultModel',
-    'requestedExperience', 'productExperience', 'turnMode', 'turnUseCase',
-    'thinkingEffort', 'isAutoswitcherEnabled', 'didAutoSwitchToReasoning',
-    'fastConvo', 'warmupState', 'conduitPrewarmed', 'isFirstTurn',
-    'planType', 'planTypeBucket',
-    'clusterRegion', 'region', 'serverTtfvt',
-    'transport', 'resumeWithWebsockets',
-    'toolInvoked', 'toolName', 'isSearch', 'isMultimodal', 'didPromptContainImage',
-    'firstByteMs', 'firstDeltaMs', 'totalMs', 'reasoningDurationMs',
-    'conversationId', 'messageId', 'serverRequestId', 'turnTraceId',
-    'reason'
-  ];
-  const lines = [headers.join(',')];
-  for (let i = 0; i < records.length; i++) {
-    const r = records[i];
-    const row = headers.map(function (h) {
-      if (h === 'timestamp') return new Date(r[h] || r.endedAt || r.startedAt || Date.now()).toISOString();
-      return csvEscape(r[h]);
-    });
-    lines.push(row.join(','));
-  }
-  return lines.join('\r\n');
-}
-
-chrome.runtime.onMessage.addListener(function (msg, sender, sendResponse) {
-  if (!msg || !msg.type) return;
-
-  if (msg.type === 'mri-record') {
-    handleRecord(msg.record).catch(function (e) { console.warn('MRI handleRecord error', e); });
-    return; // 异步，无需 sendResponse
-  }
-
-  if (msg.type === 'mri-content-ready') {
-    // 把当前悬浮卡设置同步给 content script
-    getSettings().then(function (s) {
-      try {
-        chrome.tabs.sendMessage(sender.tab.id, {
-          target: 'mri-content', type: 'mri-floating-setting', enabled: s.floatingEnabled
-        }, function () { void chrome.runtime.lastError; });
-      } catch (_) { /* ignore */ }
-    });
-    return;
-  }
-
-  if (msg.type === 'mri-disable-floating') {
-    getSettings().then(function (s) {
-      s.floatingEnabled = false;
-      setStore({ settings: s });
-    });
-    return;
-  }
-
-  if (msg.type === 'mri-get-data') {
-    Promise.all([
-      getStore([STORE_KEYS.RECORDS, STORE_KEYS.STATS]),
-      getSettings()
-    ]).then(function (res) {
-      const data = res[0];
-      sendResponse({
-        records: data[STORE_KEYS.RECORDS] || [],
-        stats: Object.assign({}, DEFAULT_STATS, data[STORE_KEYS.STATS] || {}),
-        settings: res[1]
-      });
-    });
-    return true; // 异步响应
-  }
-
-  if (msg.type === 'mri-clear') {
-    setStore({ records: [], stats: Object.assign({}, DEFAULT_STATS) }).then(function () {
-      chrome.action.setBadgeText({ text: '' });
-      sendResponse({ ok: true });
-    });
-    return true;
-  }
-
-  if (msg.type === 'mri-set-floating') {
-    getSettings().then(function (s) {
-      s.floatingEnabled = !!msg.enabled;
-      setStore({ settings: s }).then(function () {
-        // 广播给所有 ChatGPT 标签页
-        chrome.tabs.query({ url: ['https://chatgpt.com/*', 'https://chat.openai.com/*'] }, function (tabs) {
-          tabs.forEach(function (t) {
-            chrome.tabs.sendMessage(t.id, {
-              target: 'mri-content', type: 'mri-floating-setting', enabled: s.floatingEnabled
-            }, function () { void chrome.runtime.lastError; });
-          });
-        });
-        sendResponse({ ok: true });
-      });
-    });
-    return true;
-  }
-
-  if (msg.type === 'mri-export-json') {
-    getStore([STORE_KEYS.RECORDS, STORE_KEYS.STATS]).then(function (data) {
-      sendResponse({
-        json: JSON.stringify({
-          exportedAt: new Date().toISOString(),
-          records: data[STORE_KEYS.RECORDS] || [],
-          stats: Object.assign({}, DEFAULT_STATS, data[STORE_KEYS.STATS] || {})
-        }, null, 2)
-      });
-    });
-    return true;
-  }
-
-  if (msg.type === 'mri-export-csv') {
-    getStore([STORE_KEYS.RECORDS]).then(function (data) {
-      sendResponse({ csv: recordsToCsv(data[STORE_KEYS.RECORDS] || []) });
-    });
-    return true;
-  }
-});
-
-chrome.runtime.onInstalled.addListener(function () {
-  chrome.storage.local.get([STORE_KEYS.SETTINGS, STORE_KEYS.STATS], function (res) {
-    const patch = {};
-    if (!res[STORE_KEYS.SETTINGS]) patch[STORE_KEYS.SETTINGS] = DEFAULT_SETTINGS;
-    if (!res[STORE_KEYS.STATS]) patch[STORE_KEYS.STATS] = DEFAULT_STATS;
-    if (Object.keys(patch).length) chrome.storage.local.set(patch);
+function broadcastFloating(enabled) {
+  chrome.tabs.query({ url: ['https://chatgpt.com/*', 'https://chat.openai.com/*'] }, tabs => {
+    if (chrome.runtime.lastError) return;
+    for (const tab of tabs || []) chrome.tabs.sendMessage(tab.id, { target: 'mri-content', type: 'mri-floating-setting', enabled }, consumeApiError);
   });
+}
+async function setFloating(enabled) {
+  if (typeof enabled !== 'boolean') throw new Error('invalid-setting');
+  const data = await storage('get', ['settings']);
+  const settings = settingsOf(data.settings);
+  settings.floatingEnabled = enabled;
+  await storage('set', { settings });
+  broadcastFloating(enabled);
+  return { ok: true };
+}
+function csvEscape(value) {
+  if (value === null || value === undefined) return '';
+  let text = Array.isArray(value) ? value.join(';') : String(value);
+  // Quoting alone does not stop spreadsheet formula execution.
+  if (/^[\s\u0000-\u001f]*[=+@-]/.test(text) || /^[\t\r\n]/.test(text)) text = "'" + text;
+  return /[",\n\r]/.test(text) ? '"' + text.replace(/"/g, '""') + '"' : text;
+}
+function recordsToCsv(records) {
+  const headers = ['timestamp', 'status', 'endpoint', 'responseStatus', 'requestedModel', 'resolvedModel', 'serverModel', 'messageModel', 'defaultModel', 'requestedExperience', 'productExperience', 'turnMode', 'turnUseCase', 'thinkingEffort', 'isAutoswitcherEnabled', 'didAutoSwitchToReasoning', 'fastConvo', 'warmupState', 'conduitPrewarmed', 'isFirstTurn', 'planType', 'planTypeBucket', 'clusterRegion', 'region', 'serverTtfvt', 'transport', 'resumeWithWebsockets', 'toolInvoked', 'toolName', 'isSearch', 'isMultimodal', 'didPromptContainImage', 'responseHeadersMs', 'firstByteMs', 'firstDeltaMs', 'firstTextMs', 'firstReasoningMs', 'completionMs', 'totalMs', 'reasoningDurationMs', 'streamComplete', 'completionSignals', 'transportCanceled', 'cancelReason', 'captureLimited', 'conversationId', 'messageId', 'serverRequestId', 'turnTraceId', 'reason'];
+  return [headers.join(','), ...records.map(record => headers.map(key => {
+    if (key !== 'timestamp') return csvEscape(record[key]);
+    const date = new Date(record.timestamp || record.endedAt || record.startedAt || 0);
+    return Number.isFinite(date.getTime()) ? date.toISOString() : '';
+  }).join(','))].join('\r\n');
+}
+function isChatSender(sender) {
+  if (!sender || !sender.tab || sender.frameId && sender.frameId !== 0) return false;
+  try { return ['https://chatgpt.com', 'https://chat.openai.com'].includes(new URL(sender.url || sender.tab.url).origin); }
+  catch (_) { return false; }
+}
+function isPopupSender(sender) { return !!sender && sender.url === chrome.runtime.getURL('src/popup.html'); }
+const CONTENT_MESSAGES = new Set(['mri-record', 'mri-content-ready', 'mri-disable-floating']);
+const POPUP_MESSAGES = new Set(['mri-get-data', 'mri-clear', 'mri-set-floating', 'mri-export-json', 'mri-export-csv']);
+chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+  if (!message || typeof message !== 'object') return;
+  if (!CONTENT_MESSAGES.has(message.type) && !POPUP_MESSAGES.has(message.type)) return;
+  if (!sender || sender.id !== chrome.runtime.id || !(CONTENT_MESSAGES.has(message.type) ? isChatSender(sender) : isPopupSender(sender))) { sendResponse({ ok: false, error: 'unauthorized-sender' }); return; }
+  serialized(async () => {
+    if (message.type === 'mri-record') return handleRecord(message.record);
+    if (message.type === 'mri-disable-floating' || message.type === 'mri-set-floating') return setFloating(message.type === 'mri-disable-floating' ? false : message.enabled);
+    if (message.type === 'mri-clear') {
+      await storage('set', { records: [], stats: freshStats() });
+      chrome.action.setBadgeText({ text: '' }, consumeApiError);
+      chrome.action.setTitle({ title: 'Model Route Inspector' }, consumeApiError);
+      return { ok: true };
+    }
+    const data = await storage('get', ['records', 'stats', 'settings']);
+    if (message.type === 'mri-content-ready') {
+      chrome.tabs.sendMessage(sender.tab.id, { target: 'mri-content', type: 'mri-floating-setting', enabled: settingsOf(data.settings).floatingEnabled }, consumeApiError);
+      return { ok: true };
+    }
+    const records = historyOf(data.records), stats = statsOf(data.stats);
+    if (message.type === 'mri-export-csv') return { ok: true, csv: recordsToCsv(records) };
+    if (message.type === 'mri-export-json') return { ok: true, json: JSON.stringify({ exportedAt: new Date().toISOString(), records, stats }, null, 2) };
+    return { ok: true, records, stats, settings: settingsOf(data.settings) };
+  }).then(sendResponse, error => sendResponse({ ok: false, error: ['invalid-record', 'invalid-setting'].includes(error.message) ? error.message : 'storage-unavailable' }));
+  return true;
+});
+// Content scripts use the checked message bridge instead of direct history access.
+if (chrome.storage.local.setAccessLevel) chrome.storage.local.setAccessLevel({ accessLevel: 'TRUSTED_CONTEXTS' }, consumeApiError);
+chrome.runtime.onInstalled.addListener(() => {
+  serialized(async () => {
+    const data = await storage('get', ['settings', 'stats', 'records']);
+    await storage('set', { settings: settingsOf(data.settings), stats: statsOf(data.stats), records: historyOf(data.records) });
+  }).catch(() => console.warn('MRI storage initialization failed'));
 });
