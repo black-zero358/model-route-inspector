@@ -3,7 +3,7 @@
 importScripts('detector.js');
 const MRI = self.__MRI__ || {};
 const MAX_RECORDS = 1000;
-const DEFAULT_SETTINGS = { floatingEnabled: true, notifyOnMismatch: true };
+const DEFAULT_SETTINGS = { notifyOnMismatch: true };
 const BADGE_COLORS = { match: '#16a34a', mismatch: '#dc2626', unknown: '#ca8a04', conflict: '#ea580c' };
 const STATUS_KEYS = { match: 'matchCount', mismatch: 'mismatchCount', conflict: 'conflictCount', unknown: 'unknownCount' };
 const NUMBER_FIELDS = new Set(('startedAt endedAt timestamp responseStatus serverTtfvt searchToolCallCount firstByteMs firstDeltaMs totalMs responseHeadersMs firstTextMs firstTokenMs firstReasoningMs completionMs reasoningStartTime reasoningEndTime reasoningDurationMs finishedDurationSec').split(' '));
@@ -30,7 +30,7 @@ function statsOf(value) {
   for (const key of ['lastModel', 'lastConversationId']) if (typeof value[key] === 'string') result[key] = value[key].slice(0, 256);
   return result;
 }
-// Clear, export, settings and incoming records share one operation ordering.
+// Clear, export and incoming records share one operation ordering.
 // Failure is returned to the caller and must not poison the next queued operation.
 let storeQueue = Promise.resolve();
 function serialized(task) {
@@ -127,21 +127,6 @@ async function handleRecord(record) {
   maybeNotify(safe, settings, previousModel);
   return { ok: true };
 }
-function broadcastFloating(enabled) {
-  chrome.tabs.query({ url: ['https://chatgpt.com/*', 'https://chat.openai.com/*'] }, tabs => {
-    if (chrome.runtime.lastError) return;
-    for (const tab of tabs || []) chrome.tabs.sendMessage(tab.id, { target: 'mri-content', type: 'mri-floating-setting', enabled }, consumeApiError);
-  });
-}
-async function setFloating(enabled) {
-  if (typeof enabled !== 'boolean') throw new Error('invalid-setting');
-  const data = await storage('get', ['settings']);
-  const settings = settingsOf(data.settings);
-  settings.floatingEnabled = enabled;
-  await storage('set', { settings });
-  broadcastFloating(enabled);
-  return { ok: true };
-}
 function csvEscape(value) {
   if (value === null || value === undefined) return '';
   let text = Array.isArray(value) ? value.join(';') : String(value);
@@ -165,15 +150,14 @@ function isChatSender(sender) {
   catch (_) { return false; }
 }
 function isPopupSender(sender) { return !!sender && sender.url === chrome.runtime.getURL('src/popup.html'); }
-const CONTENT_MESSAGES = new Set(['mri-record', 'mri-content-ready', 'mri-disable-floating', 'mri-content-history']);
-const POPUP_MESSAGES = new Set(['mri-get-data', 'mri-clear', 'mri-set-floating', 'mri-export-json', 'mri-export-csv']);
+const CONTENT_MESSAGES = new Set(['mri-record', 'mri-content-history']);
+const POPUP_MESSAGES = new Set(['mri-get-data', 'mri-clear', 'mri-export-json', 'mri-export-csv']);
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (!message || typeof message !== 'object') return;
   if (!CONTENT_MESSAGES.has(message.type) && !POPUP_MESSAGES.has(message.type)) return;
   if (!sender || sender.id !== chrome.runtime.id || !(CONTENT_MESSAGES.has(message.type) ? isChatSender(sender) : isPopupSender(sender))) { sendResponse({ ok: false, error: 'unauthorized-sender' }); return; }
   serialized(async () => {
     if (message.type === 'mri-record') return handleRecord(message.record);
-    if (message.type === 'mri-disable-floating' || message.type === 'mri-set-floating') return setFloating(message.type === 'mri-disable-floating' ? false : message.enabled);
     if (message.type === 'mri-clear') {
       await storage('set', { records: [], stats: freshStats() });
       chrome.action.setBadgeText({ text: '' }, consumeApiError);
@@ -181,10 +165,6 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       return { ok: true };
     }
     const data = await storage('get', ['records', 'stats', 'settings']);
-    if (message.type === 'mri-content-ready') {
-      chrome.tabs.sendMessage(sender.tab.id, { target: 'mri-content', type: 'mri-floating-setting', enabled: settingsOf(data.settings).floatingEnabled }, consumeApiError);
-      return { ok: true };
-    }
     const records = historyOf(data.records), stats = statsOf(data.stats);
     if (message.type === 'mri-content-history') {
       const fields = ['requestId', 'conversationId', 'messageId', 'assistantMessageIds', 'inputMessageIds', 'parentMessageId', 'requestAction', 'requestedParentMessageId', 'requestedModel', 'serverModel', 'resolvedModel', 'messageModel', 'status', 'thinkingEffort', 'requestedThinkingEffort', 'firstTokenMs', 'firstTokenSource', 'totalMs', 'completionMs', 'streamComplete', 'transportCanceled', 'captureLimited', 'toolCalls', 'toolEvidence'];
@@ -193,7 +173,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     if (message.type === 'mri-export-csv') return { ok: true, csv: recordsToCsv(records) };
     if (message.type === 'mri-export-json') return { ok: true, json: JSON.stringify({ exportedAt: new Date().toISOString(), records, stats }, null, 2) };
     return { ok: true, records, stats, settings: settingsOf(data.settings) };
-  }).then(sendResponse, error => sendResponse({ ok: false, error: ['invalid-record', 'invalid-setting'].includes(error.message) ? error.message : 'storage-unavailable' }));
+  }).then(sendResponse, error => sendResponse({ ok: false, error: error.message === 'invalid-record' ? error.message : 'storage-unavailable' }));
   return true;
 });
 // Content scripts use the checked message bridge instead of direct history access.

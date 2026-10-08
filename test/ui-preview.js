@@ -33,14 +33,13 @@ function bootstrap(fail,count) {
     if(actual) stats.modelCounts[actual]=(stats.modelCounts[actual] || 0)+1;
   }
   return `<script>
-    var previewRecords=${JSON.stringify(preview)},previewStats=${JSON.stringify(stats)},previewFailure=${JSON.stringify(fail)},floatingEnabled=true;
+    var previewRecords=${JSON.stringify(preview)},previewStats=${JSON.stringify(stats)},previewFailure=${JSON.stringify(fail)};
     window.chrome={
       runtime:{
         sendMessage:function(msg,cb){
           var res;
-          if(previewFailure&&msg.type!=="mri-get-data"&&msg.type!=="mri-content-ready")res={ok:false,error:"合成 storage 写入失败"};
-          else if(msg.type==="mri-get-data")res={ok:true,records:previewRecords,stats:previewStats,settings:{floatingEnabled:floatingEnabled}};
-          else if(msg.type==="mri-set-floating"){floatingEnabled=msg.enabled;res={ok:true};}
+          if(previewFailure&&msg.type!=="mri-get-data")res={ok:false,error:"合成 storage 写入失败"};
+          else if(msg.type==="mri-get-data")res={ok:true,records:previewRecords,stats:previewStats};
           else if(msg.type==="mri-export-json")res={ok:true,json:JSON.stringify(previewRecords)};
           else if(msg.type==="mri-export-csv")res={ok:true,csv:"requestId,status\\\\n"+previewRecords.map(function(r){return r.requestId+","+r.status}).join("\\\\n")};
           else res={ok:true};
@@ -91,11 +90,6 @@ http.createServer((req,res)=>{
     const surface=u.searchParams.get('surface')==='extension' ? html.replace('<html lang="zh-CN">','<html lang="zh-CN" data-surface="extension-popup">') : html;
     res.end(surface.replace('</head>',bootstrap(u.searchParams.has('fail'),Math.min(1000,Math.max(6,Number(u.searchParams.get('count') || 6))))+'</head>'));return;
   }
-  if(u.pathname==='/card') {
-    const idx=Number(u.searchParams.get('case') || 0);
-    res.setHeader('Content-Type','text/html;charset=utf-8');
-    res.end('<!doctype html><html lang="zh-CN"><meta charset="utf-8"><title>悬浮卡合成验收</title><style>body{font:14px Microsoft YaHei;background:#eef2f7;color:#354055;padding:30px}h1{font-size:20px}a{margin-right:12px}</style>'+bootstrap(u.searchParams.has('fail'))+'<h1>本地悬浮卡 · 合成元数据</h1><p>仅使用合成记录，未读取真实聊天。</p><p><a href="/card?case=0">已完成后传输取消</a><a href="/card?case=1">停止且无完成标志</a><a href="/card?case=2">长模型名</a><a href="/card?case=3">观察器受限</a><a href="/card?case=5">缺失字段</a></p><script src="/content.js"></script><script>window.postMessage({source:"mri",type:"record",record:previewRecords['+idx+']},location.origin);</script></html>');return;
-  }
   if(u.pathname==='/inline') {
     const dark=u.searchParams.has('dark'),bottom=u.searchParams.has('bottom');
     res.setHeader('Content-Type','text/html;charset=utf-8');
@@ -109,4 +103,4 @@ http.createServer((req,res)=>{
   if(name==='baseline.js'||name==='baseline.css'){res.setHeader('Content-Type',name.endsWith('.css')?'text/css;charset=utf-8':'text/javascript;charset=utf-8');res.end(baseline[name.replace('baseline','popup')]);return;}
   if(!['popup.js','popup.css','content.js','inline-ui.js'].includes(name)){res.writeHead(404);res.end();return;}
   res.setHeader('Content-Type',name.endsWith('.css')?'text/css;charset=utf-8':'text/javascript;charset=utf-8');res.end(fs.readFileSync(path.join(src,name)));
-}).listen(4173,'127.0.0.1',()=>console.log('Synthetic UI preview http://127.0.0.1:4173/popup and /card'));
+}).listen(4173,'127.0.0.1',()=>console.log('Synthetic UI preview http://127.0.0.1:4173/popup'));

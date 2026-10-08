@@ -46,7 +46,7 @@ function harness(initial = {}) {
   const chat = { id: runtime.id, tab: { id: 1, url: 'https://chatgpt.com/' }, url: 'https://chatgpt.com/', frameId: 0 };
   const popup = { id: runtime.id, url: runtime.getURL('src/popup.html') };
   return {
-    send: (message, sender = ['mri-record', 'mri-content-ready', 'mri-disable-floating', 'mri-content-history'].includes(message.type) ? chat : popup) => new Promise(resolve => { onMessage(message, sender, resolve); }),
+    send: (message, sender = ['mri-record', 'mri-content-history'].includes(message.type) ? chat : popup) => new Promise(resolve => { onMessage(message, sender, resolve); }),
     raw: message => new Promise(resolve => onMessage(message, chat, resolve)),
     state: () => copy(data), fail: method => { failNext = method; }, installed: () => onInstalled(), notifications, badges, broadcasts, access
   };
@@ -92,13 +92,10 @@ function harness(initial = {}) {
     const h = harness();
     await Promise.all([
       h.send({ type: 'mri-record', record: record(1) }), h.send({ type: 'mri-clear' }),
-      h.send({ type: 'mri-set-floating', enabled: false }), h.send({ type: 'mri-record', record: record(2) }),
+      h.send({ type: 'mri-record', record: record(2) }),
       h.send({ type: 'mri-get-data' })
     ]);
-    check('clear/record/settings race respects received order', h.state().records.length === 1 && h.state().records[0].requestId === 'synthetic-2' && h.state().stats.totalRequests === 1 && h.state().settings.floatingEnabled === false);
-    await h.send({ type: 'mri-set-floating', enabled: true });
-    await h.send({ type: 'mri-disable-floating' });
-    check('content close setting persists and broadcasts', h.state().settings.floatingEnabled === false);
+    check('clear/record race respects received order', h.state().records.length === 1 && h.state().records[0].requestId === 'synthetic-2' && h.state().stats.totalRequests === 1);
     await h.send({ type: 'mri-clear' });
     await h.send({ type: 'mri-record', record: record(3) });
     check('clear creates fresh model counts without shared defaults', h.state().stats.modelCounts['gpt-6'] === 1);
@@ -156,8 +153,6 @@ function harness(initial = {}) {
     check('reject unrelated extension and chat-content management commands', foreign.error === 'unauthorized-sender' && page.error === 'unauthorized-sender');
     const popupTab = await h.send({ type: 'mri-get-data' }, { id: 'synthetic-extension', url: 'chrome-extension://synthetic-extension/src/popup.html', tab: { id: 2 } });
     check('trusted popup HTML works both as action popup and browser tab', popupTab.ok && Array.isArray(popupTab.records));
-    const invalidSetting = await h.send({ type: 'mri-set-floating', enabled: 'false' });
-    check('setting rejects truthy string coercion', invalidSetting.error === 'invalid-setting');
   }
   {
     const h = harness();
@@ -176,10 +171,11 @@ function harness(initial = {}) {
     check('worker restart resumes durable counts/history', restart.state().records.length === 1000 && restart.state().stats.totalRequests === 1002);
   }
   {
-    const h = harness({ records: [record(1, { url: 'https://chatgpt.com/backend-api/f/conversation?token=synthetic', autoSwitcherRaceWinner: { body: 'synthetic' } })], stats: { totalRequests: 1 }, settings: { floatingEnabled: false } });
+    const h = harness({ records: [record(1, { url: 'https://chatgpt.com/backend-api/f/conversation?token=synthetic', autoSwitcherRaceWinner: { body: 'synthetic' } })], stats: { totalRequests: 1 }, settings: { floatingEnabled: false, notifyOnMismatch: false } });
     h.installed();
     await h.send({ type: 'mri-get-data' });
-    check('install/update migrates old stored metadata through sanitizer', h.state().records.length === 1 && !('autoSwitcherRaceWinner' in h.state().records[0]) && !h.state().records[0].url.includes('?') && h.state().settings.floatingEnabled === false);
+    check('migration removes obsolete floating setting and preserves notification preference', !('floatingEnabled' in h.state().settings) && h.state().settings.notifyOnMismatch === false);
+    check('install/update migrates old stored metadata through sanitizer', h.state().records.length === 1 && !('autoSwitcherRaceWinner' in h.state().records[0]) && !h.state().records[0].url.includes('?'));
   }
   console.log('\nStorage regressions: ' + passed + ' passed. Mocked API proof; not browser multitab acceptance.');
 })().catch(error => { console.error(error); process.exitCode = 1; });

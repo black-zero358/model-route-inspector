@@ -175,8 +175,6 @@
     if (version !== refreshVersion || failed(res)) return;
     records=(Array.isArray(res.records) ? res.records : []).filter(function(r) { return r && typeof r === 'object'; }).sort(function(a,b) { return (b.timestamp || b.endedAt || b.startedAt || 0)-(a.timestamp || a.endedAt || a.startedAt || 0); });
     renderStats(res.stats || {}); renderList();
-    const enabled=!!(res.settings && res.settings.floatingEnabled), btn=byId('btn-floating');
-    btn.textContent='悬浮 '+(enabled ? '开' : '关'); btn.dataset.enabled=enabled ? '1':'0'; btn.setAttribute('aria-pressed',String(enabled));
   }
   async function refreshDiag() {
     const version=++diagVersion;
@@ -221,7 +219,6 @@
       if (typeof res[format] !== 'string') { notice('导出未返回有效内容'); return; }
       download('mri-'+Date.now()+'.'+format,res[format],format==='json' ? 'application/json' : 'text/csv;charset=utf-8');
     }); }); });
-    byId('btn-floating').addEventListener('click',function() { const btn=this; action(btn,async function() { const res=await send({type:'mri-set-floating',enabled:btn.dataset.enabled!=='1'}); if (!failed(res)) await refreshRecords(); }); });
     byId('btn-diag-refresh').addEventListener('click',function() { action(this,refreshDiag); });
     refreshRecords();
   });
