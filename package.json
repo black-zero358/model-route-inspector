@@ -2,7 +2,7 @@
   "name": "model-route-inspector",
   "private": true,
   "scripts": {
-    "test": "node test/run-tests.js && node test/regression-test.js && node test/integration-test.js && node test/core-regression.js && node test/storage-regression.js && node test/ui-contract.js",
+    "test": "node test/run-tests.js && node test/regression-test.js && node test/integration-test.js && node test/core-regression.js && node test/storage-regression.js && node test/ui-contract.js && node test/inline-ui-regression.js",
     "preview": "node test/ui-preview.js"
   }
 }

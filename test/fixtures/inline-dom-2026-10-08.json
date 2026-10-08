@@ -1,0 +1,43 @@
+{
+  "source": "Supported Chrome read-only DOM, 2026-10-08; structural projection only. No message text, IDs, credentials or pixels.",
+  "turn": {
+    "tag": "div",
+    "attributes": { "data-turn-key": "synthetic-input" },
+    "children": [
+      {
+        "tag": "div",
+        "className": "group/user-message",
+        "children": [
+          {
+            "tag": "div",
+            "className": "flex-row-reverse",
+            "children": [
+              {
+                "tag": "div",
+                "className": "isolate",
+                "children": [{ "tag": "div", "className": "turn-action-controls", "testRole": "userControls" }]
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "tag": "div",
+        "attributes": { "data-content-search-turn-key": "fallback-turn-0" },
+        "children": [
+          {
+            "tag": "div",
+            "className": "flex gap-1.5",
+            "children": [
+              {
+                "tag": "div",
+                "attributes": { "data-talvt-turn-state": "complete" },
+                "children": [{ "tag": "div", "className": "turn-action-controls", "testRole": "assistantControls" }]
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  }
+}

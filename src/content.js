@@ -1,10 +1,14 @@
 /* ISOLATED bridge. Page messages are untrusted: copy bounded, typed metadata only. */
 (function () {
   'use strict';
-  const STRINGS = ('requestId endpoint conversationId messageId serverRequestId turnExchangeId turnTraceId requestedModel defaultModel resolvedModel serverModel messageModel modelSlug requestedExperience thinkingEffort autoSwitcherRaceWinner planType planTypeBucket productExperience turnMode turnUseCase warmupState clusterRegion region transport contentType toolName status reason cancelReason timingSource').split(' ');
-  const NUMBERS = ('startedAt endedAt timestamp responseStatus serverTtfvt firstByteMs firstDeltaMs responseHeadersMs firstTextMs firstReasoningMs completionMs totalMs reasoningStartTime reasoningEndTime reasoningDurationMs finishedDurationSec searchToolCallCount').split(' ');
+  const HEALTH={version:'inline-v1-root-safe',ready:false,inline:false};
+  function publishHealth(){const root=document.documentElement;if(!root || typeof root.setAttribute!=='function')return;root.setAttribute('data-mri-content-version',HEALTH.version);root.setAttribute('data-mri-content-ready',String(HEALTH.ready));root.setAttribute('data-mri-inline-ready',String(HEALTH.inline));}
+  if(!document.documentElement)document.addEventListener('DOMContentLoaded',publishHealth,{once:true});
+  publishHealth();
+  const STRINGS = ('requestId endpoint conversationId messageId serverRequestId turnExchangeId turnTraceId requestedModel defaultModel resolvedModel serverModel messageModel modelSlug requestedExperience thinkingEffort requestedThinkingEffort firstTokenSource toolEvidence parentMessageId requestedParentMessageId requestAction autoSwitcherRaceWinner planType planTypeBucket productExperience turnMode turnUseCase warmupState clusterRegion region transport contentType toolName status reason cancelReason timingSource').split(' ');
+  const NUMBERS = ('startedAt endedAt timestamp responseStatus serverTtfvt firstByteMs firstDeltaMs responseHeadersMs firstTextMs firstReasoningMs firstTokenMs completionMs totalMs reasoningStartTime reasoningEndTime reasoningDurationMs finishedDurationSec searchToolCallCount').split(' ');
   const BOOLS = ('isAutoswitcherEnabled didAutoSwitchToReasoning fastConvo conduitPrewarmed isFirstTurn resumeWithWebsockets toolInvoked isSearch isMultimodal didPromptContainImage conflict aborted streamComplete transportCanceled captureLimited').split(' ');
-  const ARRAYS = ['modelSwitcherDeny','searchToolQueryTypes','completionSignals'];
+  const ARRAYS = ['modelSwitcherDeny','searchToolQueryTypes','completionSignals','assistantMessageIds','inputMessageIds'];
   const FIELDS = new Set(STRINGS.concat(NUMBERS,BOOLS,ARRAYS));
   const STATUS = {match:'一致',mismatch:'切换',unknown:'待确认',conflict:'冲突'};
   const COLORS = {match:'#7ce4ac',mismatch:'#ff9797',unknown:'#efcd75',conflict:'#ffb083'};
@@ -29,6 +33,13 @@
     if (own(input,'endpoint')) out.endpoint=endpoint(input.endpoint);
     if (['event_limit','structure_limit','idle_timeout','pre_match_limit'].includes(input.captureLimited)) out.captureLimited=input.captureLimited;
     ARRAYS.forEach(function(k) { if (input[k]===null) out[k]=null; else if (Array.isArray(input[k])) out[k]=input[k].slice(0,32).filter(function(v) {return typeof v==='string';}).map(function(v) {return v.slice(0,128);}); });
+    ['assistantMessageIds','inputMessageIds'].forEach(function(k) {if(Array.isArray(out[k]))out[k]=out[k].filter(function(v){return /^[a-zA-Z0-9_-]{1,128}$/.test(v);});});
+    if(out.parentMessageId && !/^[a-zA-Z0-9_-]{1,128}$/.test(out.parentMessageId))delete out.parentMessageId;
+    if(own(out,'requestedParentMessageId') && out.requestedParentMessageId!==null && !/^[a-zA-Z0-9_-]{1,128}$/.test(out.requestedParentMessageId))delete out.requestedParentMessageId;
+    if(own(out,'requestAction') && out.requestAction!==null && !['next','variant','continue'].includes(out.requestAction))delete out.requestAction;
+    if(out.toolEvidence && !['observed','not_observed'].includes(out.toolEvidence))delete out.toolEvidence;
+    if(out.firstTokenSource && !['assistant.text','assistant.reasoning','marker.reasoning','marker.user_visible'].includes(out.firstTokenSource))delete out.firstTokenSource;
+    if(Array.isArray(input.toolCalls)) out.toolCalls=input.toolCalls.slice(0,32).filter(function(t){return t && typeof t==='object' && typeof t.name==='string' && /^[a-zA-Z][a-zA-Z0-9_.:-]{0,79}$/.test(t.name);}).map(function(t){return {name:t.name,count:Number.isSafeInteger(t.count) && t.count>=0 ? t.count : null,status:['completed','in_progress','failed','observed','canceled'].includes(t.status) ? t.status : 'observed',durationMs:typeof t.durationMs==='number' && Number.isFinite(t.durationMs) && t.durationMs>=0 ? t.durationMs : null};});
     ['fieldStates','fieldSources'].forEach(function(map) {
       out[map]={};
       const m=input[map];
@@ -74,7 +85,7 @@
       if (callback) callback(error ? {ok:false,error:'扩展连接已断开'} : res);
     }); } catch (_) { if (callback) callback({ok:false,error:'扩展连接已断开'}); }
   }
-  function ms(n) { return typeof n==='number' && Number.isFinite(n) && n>=0 ? Math.round(n)+' ms' : '未观察'; }
+  function ms(n) { return typeof n==='number' && Number.isFinite(n) && n>=0 ? Math.round(n)+' ms' : 'Null'; }
   function evidence(r) { return r.serverModel ? (r.resolvedModel ? (r.serverModel===r.resolvedModel ? 'Server + Resolved' : 'Server / Resolved 冲突') : '仅 Server 证据') : r.resolvedModel ? '仅 Resolved 证据' : r.messageModel ? '仅 Message 证据' : '实际模型未观察'; }
   function buildWidget() {
     if (STATE.el) return;
@@ -102,6 +113,7 @@
   function hideWidget() { if (STATE.el) STATE.el.remove(); }
   function render(rec) {
     STATE.lastRecord=rec;
+    if(!document.documentElement)return;
     if (!STATE.floatingEnabled) { hideWidget(); return; }
     buildWidget();
     if (!STATE.el.isConnected) (document.body || document.documentElement).appendChild(STATE.el);
@@ -117,19 +129,29 @@
     STATE.name.textContent=label; STATE.name.title=(rec.requestedModel || '请求未观察')+' → '+(actual || '实际模型未观察');
     STATE.name.style.color=COLORS[rec.status]; STATE.sub.textContent=sub; STATE.metrics.textContent=metrics;
   }
+  let inline=null;
   window.addEventListener('message',function(ev) {
     if (ev.source!==window || ev.origin!==location.origin) return;
     const msg=ev.data;
-    if (!msg || msg.source!=='mri' || msg.type!=='record') return;
+    if (!msg || msg.source!=='mri') return;
+    if(msg.type==='request-context' && inline){const context=safeRecord(Object.assign({},msg.context,{status:'unknown'}));if(context){try{inline.requestContext(context);}catch(_){HEALTH.inline=false;publishHealth();}}return;}
+    if(msg.type!=='record')return;
     const rec=safeRecord(msg.record);
     if (!rec) return;
-    render(rec);
+    if(inline){try{inline.accept(rec);}catch(_){HEALTH.inline=false;publishHealth();}}
+    try{render(rec);}catch(_){} // Optional page UI must not block history delivery.
     send({type:'mri-record',record:rec},function(res) {
       if (!STATE.storage || STATE.lastRecord!==rec) return;
       STATE.storage.hidden=!!(res && res.ok===true);
       STATE.storage.textContent=STATE.storage.hidden ? '' : '历史保存失败；当前卡片仅为本页观察';
     });
   });
+  // Register the bridge first. UI initialization is optional and document_start may
+  // precede the HTML root; a missing root must not abort response capture/storage.
+  HEALTH.ready=true;
+  try{if(globalThis.MRIInline && typeof document.querySelectorAll==='function'){inline=globalThis.MRIInline.createController({document:document,window:window});HEALTH.inline=true;}}catch(_){HEALTH.inline=false;}
+  publishHealth();
+  document.addEventListener('DOMContentLoaded',function(){publishHealth();if(STATE.lastRecord){try{render(STATE.lastRecord);}catch(_){}}},{once:true});
   chrome.runtime.onMessage.addListener(function(msg,_sender,sendResponse) {
     if (!msg) return;
     if (msg.target==='mri-content') {
@@ -159,4 +181,5 @@
   });
   if (typeof module!=='undefined' && module.exports) module.exports={safeRecord,safeDiag,ms,evidence};
   send({type:'mri-content-ready'});
+  if(inline)send({type:'mri-content-history'},function(res){if(res && res.ok===true && Array.isArray(res.records))res.records.slice(-1000).forEach(function(r){const rec=safeRecord(r);if(rec)inline.accept(rec,true);});});
 })();

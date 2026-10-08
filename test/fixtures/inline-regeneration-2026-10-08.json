@@ -1,0 +1,30 @@
+{
+  "source": "Supported Chrome R6 regeneration request/DOM structural projection, 2026-10-08. IDs and model/timing values replaced with synthetic values. No body, arguments or credentials.",
+  "inputId": "synthetic-input",
+  "phases": ["complete", "in_progress", "complete"],
+  "context": {
+    "requestId": "synthetic-variant",
+    "conversationId": "conversation-a",
+    "requestAction": "variant",
+    "requestedParentMessageId": "synthetic-input",
+    "inputMessageIds": []
+  },
+  "legacyHistory": [
+    {"requestId":"synthetic-old-base","conversationId":"conversation-a","inputMessageIds":["synthetic-input"],"assistantMessageIds":["synthetic-old-assistant"],"status":"match","serverModel":"gpt-6","firstTokenMs":1100,"totalMs":7800},
+    {"requestId":"synthetic-old-variant","conversationId":"conversation-a","inputMessageIds":[],"assistantMessageIds":["synthetic-old-variant-assistant"],"status":"match","serverModel":"gpt-6","firstTokenMs":1700,"totalMs":9200}
+  ],
+  "record": {
+    "requestId": "synthetic-variant",
+    "conversationId": "conversation-a",
+    "requestAction": "variant",
+    "requestedParentMessageId": "synthetic-input",
+    "inputMessageIds": [],
+    "assistantMessageIds": ["synthetic-new-assistant"],
+    "messageId": "synthetic-new-assistant",
+    "status": "match",
+    "serverModel": "gpt-6-thinking",
+    "thinkingEffort": "max",
+    "firstTokenMs": 1700,
+    "totalMs": 9200
+  }
+}

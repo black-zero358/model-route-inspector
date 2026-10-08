@@ -69,6 +69,15 @@ test('bridge preserves all completion timing fields and limit reasons',()=>{
   const record=C.safeRecord({status:'unknown',requestId:'safe',firstTextMs:0,firstReasoningMs:12.5,completionMs:120,streamComplete:true,transportCanceled:true,captureLimited:'idle_timeout'});
   assert.equal(record.firstTextMs,0); assert.equal(record.completionMs,120); assert.equal(record.captureLimited,'idle_timeout'); assert.equal(record.streamComplete,true);
 });
+test('inline bridge retains exact IDs and tools without arguments or inferred counts',()=>{
+  const r=C.safeRecord({status:'match',requestId:'safe',assistantMessageIds:['assistant-a','bad/private'],inputMessageIds:['input-a'],requestedThinkingEffort:'max',firstTokenMs:0,firstTokenSource:'marker.reasoning',toolEvidence:'observed',toolCalls:[{name:'web.run',count:null,status:'observed',durationMs:null,arguments:'private',id:'private'},{name:'bad tool raw value',count:1}]});
+  assert.equal(r.assistantMessageIds.join(','),'assistant-a');assert.equal(r.inputMessageIds.join(','),'input-a');assert.equal(r.firstTokenMs,0);assert.equal(r.firstTokenSource,'marker.reasoning');assert.equal(r.requestedThinkingEffort,'max');assert.equal(r.toolCalls.length,1);assert.equal(r.toolCalls[0].count,null);assert.equal(r.toolCalls[0].durationMs,null);assert.equal(r.toolCalls[0].arguments,undefined);assert.equal(r.toolCalls[0].id,undefined);
+});
+test('inline bridge constrains tool statuses counts timing and source enums',()=>{
+  const r=C.safeRecord({status:'unknown',requestId:'safe',firstTokenSource:'arbitrary raw value',toolEvidence:'none',toolCalls:[{name:'web.run',count:-1,status:'private status',durationMs:Infinity}]});
+  assert.equal(r.firstTokenSource,undefined);assert.equal(r.toolEvidence,undefined);assert.equal(r.toolCalls[0].count,null);assert.equal(r.toolCalls[0].durationMs,null);assert.equal(r.toolCalls[0].status,'observed');
+});
+test('variant bridge preserves safe parent/action without fabricating input IDs',()=>{const r=C.safeRecord({status:'match',requestId:'variant',requestAction:'variant',requestedParentMessageId:'synthetic-input',inputMessageIds:[]});assert.equal(r.requestAction,'variant');assert.equal(r.requestedParentMessageId,'synthetic-input');assert.equal(r.inputMessageIds.length,0);const bad=C.safeRecord({status:'unknown',requestId:'bad',requestAction:'raw value',requestedParentMessageId:'bad/private'});assert.equal(bad.requestAction,undefined);assert.equal(bad.requestedParentMessageId,undefined);});
 test('bridge maps are constrained by whitelist and state vocabulary',()=>{
   const r=C.safeRecord({status:'match',requestId:'safe',fieldStates:{region:'null',body:'value',serverModel:'oops'},fieldSources:{region:'metadata.region',body:'private',serverModel:'bad path with raw values'}});
   assert.equal(r.fieldStates.region,'null'); assert.equal(r.fieldStates.body,undefined); assert.equal(r.fieldStates.serverModel,undefined); assert.equal(r.fieldSources.region,'metadata.region'); assert.equal(r.fieldSources.serverModel,undefined);
@@ -110,6 +119,22 @@ test('diagnostic reply requires matching nonce and clears listener/timer',()=>{
   assert.equal(result,undefined);
   reply({source:h.context.window,origin:'https://chatgpt.com',data:{source:'mri',type:'diag',requestId:posted.requestId,diag:{version:3}}});
   assert.equal(result.ok,true); assert.equal(timers.size,0); assert.equal(removed,1);
+});
+test('optional inline initialization failure cannot block the bridge or history',()=>{
+  const registered=[],sent=[],attrs={};
+  const win={addEventListener(type,fn){if(type==='message')registered.push(fn);},removeEventListener(){}};
+  const h=load('content.js',{window:win,document:{documentElement:{setAttribute(k,v){attrs[k]=v;}},querySelectorAll(){return [];},addEventListener(){}},MRIInline:{createController(){assert.equal(registered.length,1);throw new Error('synthetic optional UI failure');}},chrome:{runtime:{sendMessage(m,cb){sent.push(m);if(cb)cb({ok:true});},onMessage:{addListener(){}}}}});
+  assert.equal(attrs['data-mri-content-ready'],'true');assert.equal(attrs['data-mri-inline-ready'],'false');
+  registered[0]({source:h.context.window,origin:'https://chatgpt.com',data:{source:'mri',type:'record',record:{status:'match',requestId:'safe',serverModel:'gpt-6'}}});
+  assert.ok(sent.some(m=>m.type==='mri-record'));
+});
+test('document_start bridge works before HTML exists and publishes only health booleans',()=>{
+  const callbacks=[],attrs={},sent=[],doc={documentElement:null,querySelectorAll(){return [];},addEventListener(type,fn){if(type==='DOMContentLoaded')callbacks.push(fn);}};
+  const h=load('content.js',{document:doc,chrome:{runtime:{sendMessage(m,cb){sent.push(m);if(cb)cb({ok:true});},onMessage:{addListener(){}}}}});
+  h.listeners.message[0]({source:h.context.window,origin:'https://chatgpt.com',data:{source:'mri',type:'record',record:{status:'unknown',requestId:'safe',body:'private'}}});
+  assert.ok(sent.some(m=>m.type==='mri-record'));assert.equal(sent.find(m=>m.type==='mri-record').record.body,undefined);
+  doc.documentElement={setAttribute(k,v){attrs[k]=v;}};callbacks.forEach(fn=>fn());
+  assert.equal(attrs['data-mri-content-ready'],'true');assert.equal(attrs['data-mri-inline-ready'],'false');assert.equal(attrs['data-mri-content-version'],'inline-v1-root-safe');assert.equal(Object.keys(attrs).length,3);
 });
 test('history uses native keyboard controls and one lazy toggle listener',()=>{
   const html=fs.readFileSync(path.join(source,'popup.html'),'utf8'),js=fs.readFileSync(path.join(source,'popup.js'),'utf8');

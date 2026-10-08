@@ -42,7 +42,7 @@
         "https://chatgpt.com/*",
         "https://chat.openai.com/*"
       ],
-      "js": ["src/content.js"],
+      "js": ["src/inline-ui.js", "src/content.js"],
       "run_at": "document_start",
       "all_frames": false
     }
