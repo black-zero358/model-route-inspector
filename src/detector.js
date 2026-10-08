@@ -36,7 +36,7 @@
     'token',
     'authorization',
     'cookie',
-    'set_cookie'
+    'set_cookie', 'user_agent', 'user-agent', 'api_key', 'password', 'secret', 'credentials'
   ]);
 
   // server_ste_metadata.metadata 中已知的字段（用于发现未知 key）
@@ -47,7 +47,7 @@
     'plan_type', 'plan_type_bucket',
     'is_autoswitcher_enabled', 'auto_switcher_race_winner',
     'did_auto_switch_to_reasoning', 'model_switcher_deny',
-    'product_experience', 'turn_use_case', 'turn_mode',
+    'product_experience', 'requested_model_experience', 'thinking_effort', 'turn_use_case', 'turn_mode',
     'tool_name', 'tool_invoked',
     'is_search', 'search_tool_call_count', 'search_tool_query_types',
     'is_multimodal', 'did_prompt_contain_image',
@@ -122,6 +122,17 @@
       didPromptContainImage: null,
 
       // timing
+      responseHeadersMs: null,
+      firstTextMs: null,
+      firstReasoningMs: null,
+      completionMs: null,
+      timingSource: null,
+      streamComplete: false,
+      completionSignals: [],
+      transportCanceled: false,
+      cancelReason: null,
+      aborted: false,
+      captureLimited: false,
       firstByteMs: null,
       firstDeltaMs: null,
       totalMs: null,
@@ -136,176 +147,152 @@
       conflict: false,
 
       // exact evidence
-      fieldSources: {}
+      fieldSources: {},
+      fieldStates: {}
     };
   }
 
-  function mark(rec, key, val, path) {
-    if (val === null || val === undefined || val === '') return;
-    rec[key] = val;
+  // One table defines accepted keys, destination fields and value types.
+  const FIELDS = {
+    resolved_model_slug: ['resolvedModel', 'string'], default_model_slug: ['defaultModel', 'string'],
+    model_slug: ['modelSlug', 'string'], requested_model_experience: ['requestedExperience', 'string'],
+    thinking_effort: ['thinkingEffort', 'string'], cluster_region: ['clusterRegion', 'string'],
+    region: ['region', 'string'], server_ttfvt_ms: ['serverTtfvt', 'number'],
+    fast_convo: ['fastConvo', 'boolean'], warmup_state: ['warmupState', 'string'],
+    conduit_prewarmed: ['conduitPrewarmed', 'boolean'], is_first_turn: ['isFirstTurn', 'boolean'],
+    resume_with_websockets: ['resumeWithWebsockets', 'boolean'], plan_type: ['planType', 'string'],
+    plan_type_bucket: ['planTypeBucket', 'string'], is_autoswitcher_enabled: ['isAutoswitcherEnabled', 'boolean'],
+    auto_switcher_race_winner: ['autoSwitcherRaceWinner', 'string'],
+    did_auto_switch_to_reasoning: ['didAutoSwitchToReasoning', 'boolean'], model_switcher_deny: ['modelSwitcherDeny', 'array'],
+    product_experience: ['productExperience', 'string'], turn_use_case: ['turnUseCase', 'string'],
+    turn_mode: ['turnMode', 'string'], tool_name: ['toolName', 'string'], tool_invoked: ['toolInvoked', 'boolean'],
+    is_search: ['isSearch', 'boolean'], search_tool_call_count: ['searchToolCallCount', 'number'],
+    search_tool_query_types: ['searchToolQueryTypes', 'array'], is_multimodal: ['isMultimodal', 'boolean'],
+    did_prompt_contain_image: ['didPromptContainImage', 'boolean'], request_id: ['serverRequestId', 'string'],
+    turn_exchange_id: ['turnExchangeId', 'string'], turn_trace_id: ['turnTraceId', 'string'],
+    reasoning_start_time: ['reasoningStartTime', 'number'], reasoning_end_time: ['reasoningEndTime', 'number'],
+    finished_duration_sec: ['finishedDurationSec', 'number'], conversation_id: ['conversationId', 'string'],
+    message_id: ['messageId', 'string']
+  };
+  const own = function (o, k) { return Object.prototype.hasOwnProperty.call(o, k); };
+  function sensitive(k) { return SENSITIVE_KEYS.has(k.toLowerCase()) || /token|cookie|authorization|credential|password|secret|user.agent/i.test(k); }
+  function valueType(v) { return v === null ? 'null' : Array.isArray(v) ? 'array' : typeof v; }
+
+  function mark(rec, key, val, path, type) {
+    rec.fieldSources = rec.fieldSources || {};
+    rec.fieldStates = rec.fieldStates || {};
+    if (val === undefined) return;
+    let state = val === null ? 'null' : val === '' ? 'empty' : 'value';
+    if (state === 'value') {
+      if (type === 'array') {
+        if (!Array.isArray(val) || val.length > 64 || val.some(function (v) { return typeof v !== 'string' || v.length > 256; })) state = 'invalid';
+        else val = val.slice();
+      } else if (typeof val !== type || (type === 'number' && !Number.isFinite(val)) || (type === 'string' && val.length > 256)) state = 'invalid';
+    }
+    // Missing or invalid observations cannot erase earlier positive evidence.
+    if (state !== 'value' && rec.fieldStates[key] === 'value') return;
     rec.fieldSources[key] = path;
+    rec.fieldStates[key] = state;
+    rec[key] = state === 'value' ? val : null;
   }
 
-  // 判断单个已解析事件是否带有 generation stream 特征
-  function isGenerationEvent(obj) {
-    if (!obj || typeof obj !== 'object') return false;
-    if (typeof obj.type === 'string' && GENERATION_MARKERS.indexOf(obj.type) !== -1) return true;
-    for (let i = 0; i < GENERATION_MARKERS.length; i++) {
-      if (Object.prototype.hasOwnProperty.call(obj, GENERATION_MARKERS[i])) return true;
+  // Only protocol envelopes are visited; content/parts/tool results/citations are never walked.
+  // Patch paths are interpreted for known metadata keys, never replayed into a full message.
+  function inspectEvent(obj, rec, diag, state) {
+    state = state || {};
+    const result = { generation: false, text: false, reasoning: false, complete: false, limited: false };
+    const stack = [{ value: obj, path: '', depth: 0 }], seen = new Set();
+    let visits = 0;
+    function fields(o, path, server) {
+      Object.keys(o).slice(0, 256).forEach(function (k) {
+        if (sensitive(k)) return;
+        const spec = FIELDS[k];
+        if (spec && rec) {
+          const key = k === 'model_slug' && server ? 'serverModel' : spec[0];
+          mark(rec, key, o[k], path ? path + '.' + k : k, spec[1]);
+        } else if (server && !KNOWN_META_KEYS.has(k) && diag && typeof diag.addUnknownMetaKey === 'function' && /^[a-zA-Z0-9_.-]{1,80}$/.test(k)) {
+          diag.addUnknownMetaKey(k, valueType(o[k]));
+        }
+      });
     }
-    return false;
-  }
-
-  function extractFields(obj, rec, diag) {
-    const seen = new Set();
-
-    function addUnknownMeta(k) {
-      if (diag && typeof diag.addUnknownMetaKey === 'function') diag.addUnknownMetaKey(k);
+    function textObserved(value, channel) {
+      if (typeof value !== 'string' || value.length === 0) return;
+      if (channel === 'analysis' || channel === 'reasoning') result.reasoning = true;
+      else if (channel === 'final' || !channel) result.text = true;
     }
-
-    function walk(o, path, inMeta) {
-      if (o === null || typeof o !== 'object') return;
-      if (seen.has(o)) return;
+    function message(m, path) {
+      const role = m.author && m.author.role;
+      state.role = role || null; state.channel = typeof m.channel === 'string' ? m.channel : null;
+      // Legacy messages had model directly without author; current metadata needs an assistant role.
+      if (rec && (!role || role === 'assistant')) {
+        if (own(m, 'id')) mark(rec, 'messageId', m.id, path + '.id', 'string');
+        if (own(m, 'conversation_id')) mark(rec, 'conversationId', m.conversation_id, path + '.conversation_id', 'string');
+        if (own(m, 'model')) mark(rec, 'messageModel', m.model, path + '.model', 'string');
+      }
+      if (role !== 'assistant') return;
+      if (m.metadata && typeof m.metadata === 'object' && !Array.isArray(m.metadata)) {
+        fields(m.metadata, path + '.metadata', false);
+        if (rec && own(m.metadata, 'model_slug')) mark(rec, 'messageModel', m.metadata.model_slug, path + '.metadata.model_slug', 'string');
+        if (own(m.metadata, 'resolved_model_slug') || own(m.metadata, 'default_model_slug')) result.generation = true;
+      }
+      const parts = m.content && m.content.parts;
+      if (Array.isArray(parts)) parts.slice(0, 128).forEach(function (part) { textObserved(part, state.channel); });
+    }
+    while (stack.length) {
+      const item = stack.pop(), o = item.value, path = item.path;
+      if (!o || typeof o !== 'object' || seen.has(o)) continue;
       seen.add(o);
-
+      if (++visits > 256 || item.depth > 12) { result.limited = true; continue; }
       if (Array.isArray(o)) {
-        for (let i = 0; i < o.length; i++) walk(o[i], path + '[' + i + ']', inMeta);
-        return;
+        if (o.length > 128) result.limited = true;
+        for (let i = Math.min(o.length, 128) - 1; i >= 0; i--) stack.push({ value: o[i], path: path + '[' + i + ']', depth: item.depth + 1 });
+        continue;
       }
-
-      // 权威块：server_ste_metadata
-      if (o.type === 'server_ste_metadata' && o.metadata && typeof o.metadata === 'object') {
-        const m = o.metadata;
-        const metaPath = path ? path + '.metadata' : 'metadata';
-        const mkeys = Object.keys(m);
-        for (let i = 0; i < mkeys.length; i++) {
-          const k = mkeys[i];
-          if (SENSITIVE_KEYS.has(k)) continue; // 只识别，不落盘
-          const v = m[k];
-          const p = metaPath + '.' + k;
-          if (!KNOWN_META_KEYS.has(k)) {
-            addUnknownMeta(k);
-            continue; // 未知 key 不猜测含义，只在诊断里记名字
+      const patchPath = typeof o.p === 'string' ? o.p : null;
+      if (patchPath && patchPath[0] === '/' && own(o, 'v')) {
+        if (patchPath === '/message/author/role') state.role = o.v;
+        if (patchPath === '/message/channel') state.channel = o.v;
+        if (patchPath === '/message' && o.v && typeof o.v === 'object') message(o.v, path + '.v');
+        if (state.role === 'assistant') {
+          if (/^\/message\/content\/parts\/\d+$/.test(patchPath)) textObserved(o.v, state.channel);
+          if (patchPath === '/message/metadata' && o.v && typeof o.v === 'object') {
+            fields(o.v, path + '.v', false);
+            if (rec && own(o.v, 'model_slug')) mark(rec, 'messageModel', o.v.model_slug, path + '.v.model_slug', 'string');
           }
-          switch (k) {
-            case 'model_slug': mark(rec, 'serverModel', v, p); break;
-            case 'cluster_region': mark(rec, 'clusterRegion', v, p); break;
-            case 'region': mark(rec, 'region', v, p); break;
-            case 'server_ttfvt_ms': if (typeof v === 'number') mark(rec, 'serverTtfvt', v, p); break;
-            case 'fast_convo': mark(rec, 'fastConvo', v, p); break;
-            case 'warmup_state': mark(rec, 'warmupState', v, p); break;
-            case 'conduit_prewarmed': mark(rec, 'conduitPrewarmed', v, p); break;
-            case 'is_first_turn': mark(rec, 'isFirstTurn', v, p); break;
-            case 'resume_with_websockets': mark(rec, 'resumeWithWebsockets', v, p); break;
-            case 'plan_type': mark(rec, 'planType', v, p); break;
-            case 'plan_type_bucket': mark(rec, 'planTypeBucket', v, p); break;
-            case 'is_autoswitcher_enabled': mark(rec, 'isAutoswitcherEnabled', v, p); break;
-            case 'auto_switcher_race_winner': mark(rec, 'autoSwitcherRaceWinner', v, p); break;
-            case 'did_auto_switch_to_reasoning': mark(rec, 'didAutoSwitchToReasoning', v, p); break;
-            case 'model_switcher_deny': mark(rec, 'modelSwitcherDeny', v, p); break;
-            case 'product_experience': mark(rec, 'productExperience', v, p); break;
-            case 'turn_use_case': mark(rec, 'turnUseCase', v, p); break;
-            case 'turn_mode': mark(rec, 'turnMode', v, p); break;
-            case 'tool_name': mark(rec, 'toolName', v, p); break;
-            case 'tool_invoked': mark(rec, 'toolInvoked', v, p); break;
-            case 'is_search': mark(rec, 'isSearch', v, p); break;
-            case 'search_tool_call_count': mark(rec, 'searchToolCallCount', v, p); break;
-            case 'search_tool_query_types': mark(rec, 'searchToolQueryTypes', v, p); break;
-            case 'is_multimodal': mark(rec, 'isMultimodal', v, p); break;
-            case 'did_prompt_contain_image': mark(rec, 'didPromptContainImage', v, p); break;
-            case 'request_id': mark(rec, 'serverRequestId', v, p); break;
-            case 'turn_exchange_id': mark(rec, 'turnExchangeId', v, p); break;
-            case 'turn_trace_id': mark(rec, 'turnTraceId', v, p); break;
-            case 'reasoning_start_time': if (typeof v === 'number') mark(rec, 'reasoningStartTime', v, p); break;
-            case 'reasoning_end_time': if (typeof v === 'number') mark(rec, 'reasoningEndTime', v, p); break;
-            case 'finished_duration_sec': if (typeof v === 'number') mark(rec, 'finishedDurationSec', v, p); break;
-            case 'conversation_id': mark(rec, 'conversationId', v, p); break;
-            case 'message_id': mark(rec, 'messageId', v, p); break;
-            default: break;
+          const key = patchPath.slice('/message/metadata/'.length);
+          if (patchPath.startsWith('/message/metadata/') && own(FIELDS, key) && rec) {
+            const spec = FIELDS[key];
+            mark(rec, spec[0], o.v, path ? path + '.v' : 'v', spec[1]);
+            if (key === 'model_slug') mark(rec, 'messageModel', o.v, path ? path + '.v' : 'v', 'string');
           }
         }
+        // Unrecognized patch values can be arbitrary user/tool content; do not descend into them.
+        continue;
       }
-
-      const keys = Object.keys(o);
-      for (let i = 0; i < keys.length; i++) {
-        const k = keys[i];
-        if (SENSITIVE_KEYS.has(k)) continue;
-        const v = o[k];
-        const p = path ? path + '.' + k : k;
-
-        if (typeof v === 'string') {
-          switch (k) {
-            case 'resolved_model_slug': mark(rec, 'resolvedModel', v, p); break;
-            case 'default_model_slug': mark(rec, 'defaultModel', v, p); break;
-            case 'model_slug':
-              if (!p.endsWith('.metadata.model_slug')) mark(rec, 'modelSlug', v, p);
-              break;
-            case 'requested_model_experience': mark(rec, 'requestedExperience', v, p); break;
-            case 'thinking_effort': mark(rec, 'thinkingEffort', v, p); break;
-            case 'cluster_region': mark(rec, 'clusterRegion', v, p); break;
-            case 'warmup_state': mark(rec, 'warmupState', v, p); break;
-            case 'product_experience': mark(rec, 'productExperience', v, p); break;
-            case 'turn_use_case': mark(rec, 'turnUseCase', v, p); break;
-            case 'turn_mode': mark(rec, 'turnMode', v, p); break;
-            case 'plan_type': mark(rec, 'planType', v, p); break;
-            case 'plan_type_bucket': mark(rec, 'planTypeBucket', v, p); break;
-            case 'tool_name': mark(rec, 'toolName', v, p); break;
-            case 'region': mark(rec, 'region', v, p); break;
-            case 'request_id': mark(rec, 'serverRequestId', v, p); break;
-            case 'turn_exchange_id': mark(rec, 'turnExchangeId', v, p); break;
-            case 'turn_trace_id': mark(rec, 'turnTraceId', v, p); break;
-            case 'conversation_id': mark(rec, 'conversationId', v, p); break;
-            case 'message_id': mark(rec, 'messageId', v, p); break;
-            default: break;
-          }
-        } else if (typeof v === 'number') {
-          switch (k) {
-            case 'server_ttfvt_ms': mark(rec, 'serverTtfvt', v, p); break;
-            case 'reasoning_start_time': mark(rec, 'reasoningStartTime', v, p); break;
-            case 'reasoning_end_time': mark(rec, 'reasoningEndTime', v, p); break;
-            case 'finished_duration_sec': mark(rec, 'finishedDurationSec', v, p); break;
-            default: break;
-          }
-        } else if (typeof v === 'boolean') {
-          switch (k) {
-            case 'did_auto_switch_to_reasoning': mark(rec, 'didAutoSwitchToReasoning', v, p); break;
-            case 'is_autoswitcher_enabled': mark(rec, 'isAutoswitcherEnabled', v, p); break;
-            case 'fast_convo': mark(rec, 'fastConvo', v, p); break;
-            case 'conduit_prewarmed': mark(rec, 'conduitPrewarmed', v, p); break;
-            case 'is_first_turn': mark(rec, 'isFirstTurn', v, p); break;
-            case 'resume_with_websockets': mark(rec, 'resumeWithWebsockets', v, p); break;
-            case 'tool_invoked': mark(rec, 'toolInvoked', v, p); break;
-            case 'is_search': mark(rec, 'isSearch', v, p); break;
-            case 'is_multimodal': mark(rec, 'isMultimodal', v, p); break;
-            case 'did_prompt_contain_image': mark(rec, 'didPromptContainImage', v, p); break;
-            default: break;
-          }
-        } else if (Array.isArray(v)) {
-          if (k === 'model_switcher_deny') mark(rec, 'modelSwitcherDeny', v, p);
-          else if (k === 'search_tool_query_types') mark(rec, 'searchToolQueryTypes', v, p);
-        } else if (v !== null && typeof v === 'object') {
-          if (k === 'auto_switcher_race_winner') mark(rec, 'autoSwitcherRaceWinner', v, p);
-        }
-
-        // message 对象兜底
-        if (k === 'message' && v && typeof v === 'object') {
-          if (typeof v.id === 'string') mark(rec, 'messageId', v.id, p + '.id');
-          if (typeof v.conversation_id === 'string') mark(rec, 'conversationId', v.conversation_id, p + '.conversation_id');
-          if (typeof v.model === 'string') mark(rec, 'messageModel', v.model, p + '.model');
-        }
-
-        if (v !== null && typeof v === 'object') walk(v, p, inMeta || (k === 'metadata'));
+      if (typeof o.type === 'string' && GENERATION_MARKERS.indexOf(o.type) !== -1) result.generation = true;
+      for (let i = 0; i < GENERATION_MARKERS.length; i++) if (own(o, GENERATION_MARKERS[i])) result.generation = true;
+      if (o.type === 'message_stream_complete') result.complete = true;
+      if (rec) fields(o, path, false);
+      if (o.type === 'server_ste_metadata' && o.metadata && typeof o.metadata === 'object') fields(o.metadata, path ? path + '.metadata' : 'metadata', true);
+      else if (o.metadata && typeof o.metadata === 'object' && !Array.isArray(o.metadata)) fields(o.metadata, path ? path + '.metadata' : 'metadata', false);
+      if (o.message && typeof o.message === 'object') message(o.message, path ? path + '.message' : 'message');
+      if (o.type === 'delta' && o.delta && Array.isArray(o.delta.content)) {
+        o.delta.content.slice(0, 128).forEach(function (part) { if (part && part.type === 'text') textObserved(part.text, state.channel); });
       }
+      if (o.v && typeof o.v === 'object') stack.push({ value: o.v, path: path ? path + '.v' : 'v', depth: item.depth + 1 });
     }
-
-    walk(obj, '', false);
+    return result;
   }
+
+  function isGenerationEvent(obj) { return inspectEvent(obj).generation; }
+  function extractFields(obj, rec, diag, state) { return inspectEvent(obj, rec, diag, state); }
 
   function finalizeTiming(rec) {
     if (rec.reasoningStartTime != null && rec.reasoningEndTime != null) {
-      rec.reasoningDurationMs = Math.round((rec.reasoningEndTime - rec.reasoningStartTime) * 1000);
+      const duration = (rec.reasoningEndTime - rec.reasoningStartTime) * 1000;
+      if (Number.isFinite(duration) && duration >= 0) rec.reasoningDurationMs = Math.round(duration);
     }
-    if (rec.startedAt && rec.endedAt) rec.totalMs = rec.endedAt - rec.startedAt;
+    if (rec.totalMs == null && rec.startedAt != null && rec.endedAt != null) rec.totalMs = Math.max(0, rec.endedAt - rec.startedAt);
   }
 
   // 判定：缺字段 → unknown，绝不因单个字段缺失就喊降级
@@ -331,7 +318,7 @@
         rec.reason = '请求模型与实际模型一致：' + req;
       } else {
         rec.status = 'mismatch';
-        rec.reason = '请求 ' + req + ' → 实际 ' + actual + '（检测到模型切换/降级）';
+        rec.reason = '请求 ' + req + ' → 实际 ' + actual + '（检测到模型切换/降级；具体原因未确认）';
       }
       return rec;
     }

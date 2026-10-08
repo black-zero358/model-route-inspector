@@ -1,0 +1,1602 @@
+{
+  "provenance": "Route-only projection of observed 2026-10-08 sanitized structural evidence. Protocol envelope/patch shape and declared route metadata values preserved; body, assets, identifiers and credentials excluded. Expected identities come independently from the recorded plugin/assistant evidence.",
+  "cases": [
+    {
+      "label": "fresh-long",
+      "fixtures": [
+        {
+          "type": "resume_conversation_token"
+        },
+        {
+          "p": "",
+          "o": "add",
+          "v": {
+            "message": {
+              "author": {
+                "role": "user"
+              },
+              "status": "finished_successfully",
+              "metadata": {
+                "model_switcher_deny": []
+              }
+            }
+          }
+        },
+        {
+          "v": {
+            "message": {
+              "author": {
+                "role": "system"
+              },
+              "status": "finished_successfully",
+              "metadata": {
+                "resolved_model_slug": "gpt-6",
+                "model_slug": "gpt-6",
+                "default_model_slug": "gpt-6",
+                "model_switcher_deny": []
+              }
+            }
+          }
+        },
+        {
+          "v": {
+            "message": {
+              "author": {
+                "role": "system"
+              },
+              "status": "finished_successfully",
+              "metadata": {
+                "resolved_model_slug": "gpt-6",
+                "model_slug": "gpt-6",
+                "default_model_slug": "gpt-6",
+                "model_switcher_deny": []
+              }
+            }
+          }
+        },
+        {
+          "v": {
+            "message": {
+              "author": {
+                "role": "system"
+              },
+              "status": "finished_successfully",
+              "metadata": {
+                "resolved_model_slug": "gpt-6",
+                "model_slug": "gpt-6",
+                "default_model_slug": "gpt-6",
+                "model_switcher_deny": []
+              }
+            }
+          }
+        },
+        {
+          "v": {
+            "message": {
+              "author": {
+                "role": "system"
+              },
+              "status": "finished_successfully",
+              "metadata": {
+                "resolved_model_slug": "gpt-6",
+                "model_slug": "gpt-6",
+                "default_model_slug": "gpt-6",
+                "model_switcher_deny": []
+              }
+            }
+          }
+        },
+        {
+          "v": {
+            "message": {
+              "author": {
+                "role": "user"
+              },
+              "status": "finished_successfully",
+              "metadata": {
+                "model_slug": "gpt-6",
+                "default_model_slug": "gpt-6",
+                "model_switcher_deny": []
+              }
+            }
+          }
+        },
+        {
+          "v": {
+            "message": {
+              "author": {
+                "role": "assistant"
+              },
+              "status": "finished_successfully",
+              "metadata": {
+                "resolved_model_slug": "gpt-6",
+                "model_slug": "gpt-6",
+                "default_model_slug": "gpt-6",
+                "model_switcher_deny": []
+              }
+            }
+          }
+        },
+        {
+          "v": {
+            "message": {
+              "author": {
+                "role": "system"
+              },
+              "status": "finished_successfully",
+              "metadata": {
+                "resolved_model_slug": "gpt-6",
+                "model_slug": "gpt-6",
+                "default_model_slug": "gpt-6",
+                "model_switcher_deny": []
+              }
+            }
+          }
+        },
+        {
+          "v": {
+            "message": {
+              "author": {
+                "role": "system"
+              },
+              "status": "finished_successfully",
+              "metadata": {
+                "resolved_model_slug": "gpt-6",
+                "model_slug": "gpt-6",
+                "default_model_slug": "gpt-6",
+                "model_switcher_deny": []
+              }
+            }
+          }
+        },
+        {
+          "v": {
+            "message": {
+              "author": {
+                "role": "system"
+              },
+              "status": "finished_successfully",
+              "metadata": {
+                "resolved_model_slug": "gpt-6",
+                "model_slug": "gpt-6",
+                "default_model_slug": "gpt-6",
+                "model_switcher_deny": []
+              }
+            }
+          }
+        },
+        {
+          "v": {
+            "message": {
+              "author": {
+                "role": "system"
+              },
+              "status": "finished_successfully",
+              "metadata": {
+                "resolved_model_slug": "gpt-6",
+                "model_slug": "gpt-6",
+                "default_model_slug": "gpt-6",
+                "model_switcher_deny": []
+              }
+            }
+          }
+        },
+        {
+          "type": "message_marker"
+        },
+        {
+          "type": "message_marker"
+        },
+        {
+          "v": {
+            "message": {
+              "author": {
+                "role": "assistant"
+              },
+              "status": "in_progress",
+              "metadata": {
+                "resolved_model_slug": "gpt-6",
+                "model_slug": "gpt-6",
+                "default_model_slug": "gpt-6",
+                "model_switcher_deny": []
+              },
+              "channel": "final"
+            }
+          }
+        },
+        {
+          "o": "patch",
+          "v": [
+            {
+              "p": "/message/content/parts/0",
+              "o": "append"
+            },
+            {
+              "p": "/message/metadata/model_dil_v2/constants",
+              "o": "append"
+            },
+            {
+              "p": "/message/metadata/model_dil_v2/fallbackMarkdown",
+              "o": "append"
+            }
+          ]
+        },
+        {
+          "v": [
+            {
+              "p": "/message/content/parts/0",
+              "o": "append"
+            },
+            {
+              "p": "/message/metadata/model_dil_v2/constants",
+              "o": "append"
+            },
+            {
+              "p": "/message/metadata/model_dil_v2/fallbackMarkdown",
+              "o": "append"
+            }
+          ]
+        },
+        {
+          "v": [
+            {
+              "p": "/message/content/parts/0",
+              "o": "append"
+            },
+            {
+              "p": "/message/metadata/model_dil_v2/constants",
+              "o": "append"
+            },
+            {
+              "p": "/message/metadata/model_dil_v2/fallbackMarkdown",
+              "o": "append"
+            }
+          ]
+        },
+        {
+          "v": [
+            {
+              "p": "/message/content/parts/0",
+              "o": "append"
+            },
+            {
+              "p": "/message/metadata/model_dil_v2/constants",
+              "o": "append"
+            },
+            {
+              "p": "/message/metadata/model_dil_v2/fallbackMarkdown",
+              "o": "append"
+            }
+          ]
+        },
+        {
+          "v": [
+            {
+              "p": "/message/status",
+              "o": "replace"
+            },
+            {
+              "p": "/message/end_turn",
+              "o": "replace"
+            },
+            {
+              "p": "/message/metadata",
+              "o": "append"
+            }
+          ]
+        },
+        {
+          "type": "message_marker"
+        },
+        {
+          "type": "server_ste_metadata",
+          "metadata": {
+            "server_ttfvt_ms": 2187.7368730056332,
+            "conduit_prewarmed": false,
+            "plan_type": "pro",
+            "plan_type_bucket": "paid",
+            "tool_name": null,
+            "tool_invoked": false,
+            "fast_convo": true,
+            "warmup_state": "new",
+            "is_first_turn": true,
+            "cluster_region": "westcentralus",
+            "model_slug": "gpt-6",
+            "requested_model_experience": "instant",
+            "product_experience": "chat",
+            "region": null,
+            "is_multimodal": null,
+            "did_auto_switch_to_reasoning": false,
+            "auto_switcher_race_winner": null,
+            "is_autoswitcher_enabled": false,
+            "is_search": null,
+            "did_prompt_contain_image": false,
+            "search_tool_call_count": null,
+            "search_tool_query_types": null,
+            "resume_with_websockets": true,
+            "turn_use_case": "text",
+            "turn_mode": "default"
+          }
+        },
+        {
+          "type": "message_stream_complete"
+        },
+        {
+          "type": "conversation_detail_metadata",
+          "default_model_slug": "gpt-6"
+        }
+      ],
+      "expected": {
+        "resolvedModel": "gpt-6",
+        "serverModel": "gpt-6",
+        "messageModel": "gpt-6"
+      }
+    },
+    {
+      "label": "image-manual",
+      "fixtures": [
+        {
+          "type": "resume_conversation_token"
+        },
+        {
+          "type": "input_message",
+          "input_message": {
+            "author": {
+              "role": "user"
+            },
+            "status": "finished_successfully"
+          }
+        },
+        {
+          "p": "",
+          "o": "add",
+          "v": {
+            "message": {
+              "author": {
+                "role": "system"
+              },
+              "status": "finished_successfully",
+              "metadata": {
+                "resolved_model_slug": "gpt-6-thinking",
+                "model_slug": "gpt-6-thinking",
+                "default_model_slug": "gpt-6-thinking",
+                "thinking_effort": "max",
+                "model_switcher_deny": []
+              }
+            }
+          }
+        },
+        {
+          "v": {
+            "message": {
+              "author": {
+                "role": "system"
+              },
+              "status": "finished_successfully",
+              "metadata": {
+                "resolved_model_slug": "gpt-6-thinking",
+                "model_slug": "gpt-6-thinking",
+                "default_model_slug": "gpt-6-thinking",
+                "thinking_effort": "max",
+                "model_switcher_deny": []
+              }
+            }
+          }
+        },
+        {
+          "v": {
+            "message": {
+              "author": {
+                "role": "system"
+              },
+              "status": "finished_successfully",
+              "metadata": {
+                "resolved_model_slug": "gpt-6-thinking",
+                "model_slug": "gpt-6-thinking",
+                "default_model_slug": "gpt-6-thinking",
+                "thinking_effort": "max",
+                "model_switcher_deny": []
+              }
+            }
+          }
+        },
+        {
+          "type": "message_marker"
+        },
+        {
+          "v": {
+            "message": {
+              "author": {
+                "role": "assistant"
+              },
+              "status": "finished_successfully",
+              "metadata": {
+                "resolved_model_slug": "gpt-6-thinking",
+                "model_slug": "gpt-6-thinking",
+                "default_model_slug": "gpt-6-thinking",
+                "thinking_effort": "max",
+                "model_switcher_deny": []
+              }
+            }
+          }
+        },
+        {
+          "type": "message_marker"
+        },
+        {
+          "type": "message_marker"
+        },
+        {
+          "v": {
+            "message": {
+              "author": {
+                "role": "assistant"
+              },
+              "status": "in_progress",
+              "metadata": {
+                "resolved_model_slug": "gpt-6-thinking",
+                "model_slug": "gpt-6-thinking",
+                "default_model_slug": "gpt-6-thinking",
+                "thinking_effort": "max",
+                "model_switcher_deny": []
+              },
+              "channel": "final"
+            }
+          }
+        },
+        {
+          "o": "patch",
+          "v": [
+            {
+              "p": "/message/content/parts/0",
+              "o": "append"
+            },
+            {
+              "p": "/message/metadata/model_dil_v2/code",
+              "o": "replace"
+            },
+            {
+              "p": "/message/metadata/model_dil_v2/constants",
+              "o": "append"
+            },
+            {
+              "p": "/message/metadata/model_dil_v2/constants",
+              "o": "append"
+            },
+            {
+              "p": "/message/metadata/model_dil_v2/fallbackMarkdown",
+              "o": "append"
+            }
+          ]
+        },
+        {
+          "v": [
+            {
+              "p": "/message/content/parts/0",
+              "o": "append"
+            },
+            {
+              "p": "/message/metadata/model_dil_v2/constants",
+              "o": "append"
+            },
+            {
+              "p": "/message/metadata/model_dil_v2/fallbackMarkdown",
+              "o": "append"
+            }
+          ]
+        },
+        {
+          "v": [
+            {
+              "p": "/message/content/parts/0",
+              "o": "append"
+            },
+            {
+              "p": "/message/metadata/model_dil_v2/code",
+              "o": "replace"
+            },
+            {
+              "p": "/message/metadata/model_dil_v2/constants",
+              "o": "append"
+            },
+            {
+              "p": "/message/metadata/model_dil_v2/constants",
+              "o": "append"
+            },
+            {
+              "p": "/message/metadata/model_dil_v2/fallbackMarkdown",
+              "o": "append"
+            }
+          ]
+        },
+        {
+          "v": [
+            {
+              "p": "/message/content/parts/0",
+              "o": "append"
+            },
+            {
+              "p": "/message/metadata/model_dil_v2/code",
+              "o": "replace"
+            },
+            {
+              "p": "/message/metadata/model_dil_v2/constants",
+              "o": "append"
+            },
+            {
+              "p": "/message/metadata/model_dil_v2/constants",
+              "o": "append"
+            },
+            {
+              "p": "/message/metadata/model_dil_v2/fallbackMarkdown",
+              "o": "replace"
+            }
+          ]
+        },
+        {
+          "v": [
+            {
+              "p": "/message/content/parts/0",
+              "o": "append"
+            },
+            {
+              "p": "/message/metadata/model_dil_v2/code",
+              "o": "replace"
+            },
+            {
+              "p": "/message/metadata/model_dil_v2/constants",
+              "o": "append"
+            },
+            {
+              "p": "/message/metadata/model_dil_v2/constants",
+              "o": "append"
+            },
+            {
+              "p": "/message/metadata/model_dil_v2/fallbackMarkdown",
+              "o": "replace"
+            }
+          ]
+        },
+        {
+          "v": [
+            {
+              "p": "/message/content/parts/0",
+              "o": "append"
+            },
+            {
+              "p": "/message/metadata/model_dil_v2/code",
+              "o": "replace"
+            },
+            {
+              "p": "/message/metadata/model_dil_v2/constants",
+              "o": "append"
+            },
+            {
+              "p": "/message/metadata/model_dil_v2/fallbackMarkdown",
+              "o": "replace"
+            }
+          ]
+        },
+        {
+          "v": [
+            {
+              "p": "/message/content/parts/0",
+              "o": "append"
+            },
+            {
+              "p": "/message/metadata/model_dil_v2/code",
+              "o": "replace"
+            },
+            {
+              "p": "/message/metadata/model_dil_v2/constants",
+              "o": "append"
+            },
+            {
+              "p": "/message/metadata/model_dil_v2/constants",
+              "o": "append"
+            },
+            {
+              "p": "/message/metadata/model_dil_v2/fallbackMarkdown",
+              "o": "replace"
+            }
+          ]
+        },
+        {
+          "v": [
+            {
+              "p": "/message/content/parts/0",
+              "o": "append"
+            },
+            {
+              "p": "/message/metadata/model_dil_v2/code",
+              "o": "replace"
+            },
+            {
+              "p": "/message/metadata/model_dil_v2/constants",
+              "o": "append"
+            },
+            {
+              "p": "/message/metadata/model_dil_v2/constants",
+              "o": "append"
+            },
+            {
+              "p": "/message/metadata/model_dil_v2/fallbackMarkdown",
+              "o": "replace"
+            }
+          ]
+        },
+        {
+          "v": [
+            {
+              "p": "/message/content/parts/0",
+              "o": "append"
+            },
+            {
+              "p": "/message/metadata/model_dil_v2/code",
+              "o": "replace"
+            },
+            {
+              "p": "/message/metadata/model_dil_v2/constants",
+              "o": "append"
+            },
+            {
+              "p": "/message/metadata/model_dil_v2/fallbackMarkdown",
+              "o": "replace"
+            }
+          ]
+        },
+        {
+          "v": [
+            {
+              "p": "/message/content/parts/0",
+              "o": "append"
+            },
+            {
+              "p": "/message/metadata/model_dil_v2/code",
+              "o": "replace"
+            },
+            {
+              "p": "/message/metadata/model_dil_v2/constants",
+              "o": "append"
+            },
+            {
+              "p": "/message/metadata/model_dil_v2/constants",
+              "o": "append"
+            },
+            {
+              "p": "/message/metadata/model_dil_v2/fallbackMarkdown",
+              "o": "replace"
+            }
+          ]
+        },
+        {
+          "v": [
+            {
+              "p": "/message/content/parts/0",
+              "o": "append"
+            },
+            {
+              "p": "/message/metadata/model_dil_v2/code",
+              "o": "replace"
+            },
+            {
+              "p": "/message/metadata/model_dil_v2/constants",
+              "o": "append"
+            },
+            {
+              "p": "/message/metadata/model_dil_v2/fallbackMarkdown",
+              "o": "append"
+            }
+          ]
+        },
+        {
+          "v": [
+            {
+              "p": "/message/content/parts/0",
+              "o": "append"
+            },
+            {
+              "p": "/message/metadata/model_dil_v2/code",
+              "o": "replace"
+            },
+            {
+              "p": "/message/metadata/model_dil_v2/constants",
+              "o": "append"
+            },
+            {
+              "p": "/message/metadata/model_dil_v2/constants",
+              "o": "append"
+            },
+            {
+              "p": "/message/metadata/model_dil_v2/fallbackMarkdown",
+              "o": "replace"
+            }
+          ]
+        },
+        {
+          "v": [
+            {
+              "p": "/message/content/parts/0",
+              "o": "append"
+            },
+            {
+              "p": "/message/metadata/model_dil_v2/code",
+              "o": "replace"
+            },
+            {
+              "p": "/message/metadata/model_dil_v2/constants",
+              "o": "append"
+            },
+            {
+              "p": "/message/metadata/model_dil_v2/fallbackMarkdown",
+              "o": "append"
+            }
+          ]
+        },
+        {
+          "v": [
+            {
+              "p": "/message/content/parts/0",
+              "o": "append"
+            },
+            {
+              "p": "/message/metadata/model_dil_v2/constants",
+              "o": "append"
+            },
+            {
+              "p": "/message/metadata/model_dil_v2/fallbackMarkdown",
+              "o": "append"
+            }
+          ]
+        },
+        {
+          "v": [
+            {
+              "p": "/message/content/parts/0",
+              "o": "append"
+            },
+            {
+              "p": "/message/metadata/model_dil_v2/code",
+              "o": "replace"
+            },
+            {
+              "p": "/message/metadata/model_dil_v2/constants",
+              "o": "append"
+            },
+            {
+              "p": "/message/metadata/model_dil_v2/constants",
+              "o": "append"
+            },
+            {
+              "p": "/message/metadata/model_dil_v2/fallbackMarkdown",
+              "o": "append"
+            }
+          ]
+        },
+        {
+          "v": [
+            {
+              "p": "/message/content/parts/0",
+              "o": "append"
+            },
+            {
+              "p": "/message/metadata/model_dil_v2/code",
+              "o": "replace"
+            },
+            {
+              "p": "/message/metadata/model_dil_v2/constants",
+              "o": "append"
+            },
+            {
+              "p": "/message/metadata/model_dil_v2/constants",
+              "o": "append"
+            },
+            {
+              "p": "/message/metadata/model_dil_v2/fallbackMarkdown",
+              "o": "replace"
+            }
+          ]
+        },
+        {
+          "v": [
+            {
+              "p": "/message/content/parts/0",
+              "o": "append"
+            },
+            {
+              "p": "/message/metadata/model_dil_v2/constants",
+              "o": "append"
+            },
+            {
+              "p": "/message/metadata/model_dil_v2/fallbackMarkdown",
+              "o": "append"
+            }
+          ]
+        },
+        {
+          "v": [
+            {
+              "p": "/message/content/parts/0",
+              "o": "append"
+            },
+            {
+              "p": "/message/metadata/model_dil_v2/constants",
+              "o": "append"
+            },
+            {
+              "p": "/message/metadata/model_dil_v2/fallbackMarkdown",
+              "o": "append"
+            }
+          ]
+        },
+        {
+          "v": [
+            {
+              "p": "/message/status",
+              "o": "replace"
+            },
+            {
+              "p": "/message/end_turn",
+              "o": "replace"
+            },
+            {
+              "p": "/message/metadata",
+              "o": "append"
+            }
+          ]
+        },
+        {
+          "type": "message_marker"
+        },
+        {
+          "p": "/message/metadata/conversation_followup_suggestions_eligible",
+          "o": "replace"
+        },
+        {
+          "type": "server_ste_metadata",
+          "metadata": {
+            "server_ttfvt_ms": 5378.650596991065,
+            "conduit_prewarmed": false,
+            "plan_type": "pro",
+            "plan_type_bucket": "paid",
+            "tool_name": null,
+            "tool_invoked": false,
+            "fast_convo": true,
+            "warmup_state": "new",
+            "is_first_turn": false,
+            "cluster_region": "westcentralus",
+            "model_slug": "gpt-6-thinking",
+            "requested_model_experience": "thinking",
+            "product_experience": "chat",
+            "region": null,
+            "is_multimodal": null,
+            "did_auto_switch_to_reasoning": false,
+            "auto_switcher_race_winner": null,
+            "is_autoswitcher_enabled": false,
+            "is_search": null,
+            "did_prompt_contain_image": true,
+            "search_tool_call_count": null,
+            "search_tool_query_types": null,
+            "resume_with_websockets": true,
+            "turn_use_case": "multimodal",
+            "turn_mode": "default"
+          }
+        },
+        {
+          "type": "message_stream_complete"
+        },
+        {
+          "type": "conversation_detail_metadata",
+          "default_model_slug": "gpt-6-thinking"
+        }
+      ],
+      "expected": {
+        "resolvedModel": "gpt-6-thinking",
+        "serverModel": "gpt-6-thinking",
+        "messageModel": "gpt-6-thinking"
+      }
+    },
+    {
+      "label": "instant-gpt6",
+      "fixtures": [
+        {
+          "type": "resume_conversation_token"
+        },
+        {
+          "type": "input_message",
+          "input_message": {
+            "author": {
+              "role": "user"
+            },
+            "status": "finished_successfully"
+          }
+        },
+        {
+          "p": "",
+          "o": "add",
+          "v": {
+            "message": {
+              "author": {
+                "role": "system"
+              },
+              "status": "finished_successfully",
+              "metadata": {
+                "resolved_model_slug": "gpt-6",
+                "model_slug": "gpt-6",
+                "default_model_slug": "gpt-6",
+                "model_switcher_deny": []
+              }
+            }
+          }
+        },
+        {
+          "v": {
+            "message": {
+              "author": {
+                "role": "system"
+              },
+              "status": "finished_successfully",
+              "metadata": {
+                "resolved_model_slug": "gpt-6",
+                "model_slug": "gpt-6",
+                "default_model_slug": "gpt-6",
+                "model_switcher_deny": []
+              }
+            }
+          }
+        },
+        {
+          "v": {
+            "message": {
+              "author": {
+                "role": "system"
+              },
+              "status": "finished_successfully",
+              "metadata": {
+                "resolved_model_slug": "gpt-6",
+                "model_slug": "gpt-6",
+                "default_model_slug": "gpt-6",
+                "model_switcher_deny": []
+              }
+            }
+          }
+        },
+        {
+          "v": {
+            "message": {
+              "author": {
+                "role": "system"
+              },
+              "status": "finished_successfully",
+              "metadata": {
+                "resolved_model_slug": "gpt-6",
+                "model_slug": "gpt-6",
+                "default_model_slug": "gpt-6",
+                "model_switcher_deny": []
+              }
+            }
+          }
+        },
+        {
+          "v": {
+            "message": {
+              "author": {
+                "role": "system"
+              },
+              "status": "finished_successfully",
+              "metadata": {
+                "resolved_model_slug": "gpt-6",
+                "model_slug": "gpt-6",
+                "default_model_slug": "gpt-6",
+                "model_switcher_deny": []
+              }
+            }
+          }
+        },
+        {
+          "type": "message_marker"
+        },
+        {
+          "type": "message_marker"
+        },
+        {
+          "v": {
+            "message": {
+              "author": {
+                "role": "assistant"
+              },
+              "status": "in_progress",
+              "metadata": {
+                "resolved_model_slug": "gpt-6",
+                "model_slug": "gpt-6",
+                "default_model_slug": "gpt-6",
+                "model_switcher_deny": []
+              },
+              "channel": "final"
+            }
+          }
+        },
+        {
+          "o": "patch",
+          "v": [
+            {
+              "p": "/message/status",
+              "o": "replace"
+            },
+            {
+              "p": "/message/end_turn",
+              "o": "replace"
+            },
+            {
+              "p": "/message/metadata",
+              "o": "append"
+            }
+          ]
+        },
+        {
+          "type": "message_marker"
+        },
+        {
+          "p": "/message/metadata/conversation_followup_suggestions_eligible",
+          "o": "replace"
+        },
+        {
+          "type": "server_ste_metadata",
+          "metadata": {
+            "server_ttfvt_ms": 2005.4702069610357,
+            "conduit_prewarmed": true,
+            "plan_type": "pro",
+            "plan_type_bucket": "paid",
+            "tool_name": null,
+            "tool_invoked": false,
+            "fast_convo": true,
+            "warmup_state": "warm",
+            "is_first_turn": false,
+            "cluster_region": "westcentralus",
+            "model_slug": "gpt-6",
+            "requested_model_experience": "instant",
+            "product_experience": "chat",
+            "region": null,
+            "is_multimodal": null,
+            "did_auto_switch_to_reasoning": false,
+            "auto_switcher_race_winner": null,
+            "is_autoswitcher_enabled": false,
+            "is_search": null,
+            "did_prompt_contain_image": false,
+            "search_tool_call_count": null,
+            "search_tool_query_types": null,
+            "resume_with_websockets": true,
+            "turn_use_case": "text",
+            "turn_mode": "default"
+          }
+        },
+        {
+          "type": "message_stream_complete"
+        },
+        {
+          "type": "conversation_detail_metadata",
+          "default_model_slug": "gpt-6"
+        }
+      ],
+      "expected": {
+        "resolvedModel": "gpt-6",
+        "serverModel": "gpt-6",
+        "messageModel": "gpt-6"
+      }
+    },
+    {
+      "label": "plain-gpt6",
+      "fixtures": [
+        {
+          "type": "resume_conversation_token"
+        },
+        {
+          "type": "input_message",
+          "input_message": {
+            "author": {
+              "role": "user"
+            },
+            "status": "finished_successfully"
+          }
+        },
+        {
+          "p": "",
+          "o": "add",
+          "v": {
+            "message": {
+              "author": {
+                "role": "assistant"
+              },
+              "status": "finished_successfully",
+              "metadata": {
+                "resolved_model_slug": "gpt-6-thinking",
+                "model_slug": "gpt-6-thinking",
+                "default_model_slug": "gpt-6-thinking",
+                "thinking_effort": "max",
+                "model_switcher_deny": []
+              }
+            }
+          }
+        },
+        {
+          "type": "message_marker"
+        },
+        {
+          "v": {
+            "message": {
+              "author": {
+                "role": "assistant"
+              },
+              "status": "finished_successfully",
+              "metadata": {
+                "resolved_model_slug": "gpt-6-thinking",
+                "model_slug": "gpt-6-thinking",
+                "default_model_slug": "gpt-6-thinking",
+                "thinking_effort": "max",
+                "model_switcher_deny": []
+              }
+            }
+          }
+        },
+        {
+          "type": "message_marker"
+        },
+        {
+          "type": "message_marker"
+        },
+        {
+          "v": {
+            "message": {
+              "author": {
+                "role": "assistant"
+              },
+              "status": "in_progress",
+              "metadata": {
+                "resolved_model_slug": "gpt-6-thinking",
+                "model_slug": "gpt-6-thinking",
+                "default_model_slug": "gpt-6-thinking",
+                "thinking_effort": "max",
+                "model_switcher_deny": []
+              },
+              "channel": "final"
+            }
+          }
+        },
+        {
+          "o": "patch",
+          "v": [
+            {
+              "p": "/message/status",
+              "o": "replace"
+            },
+            {
+              "p": "/message/end_turn",
+              "o": "replace"
+            },
+            {
+              "p": "/message/metadata",
+              "o": "append"
+            }
+          ]
+        },
+        {
+          "type": "message_marker"
+        },
+        {
+          "p": "/message/metadata/conversation_followup_suggestions_eligible",
+          "o": "replace"
+        },
+        {
+          "type": "server_ste_metadata",
+          "metadata": {
+            "server_ttfvt_ms": 2376.9873209530488,
+            "conduit_prewarmed": true,
+            "plan_type": "pro",
+            "plan_type_bucket": "paid",
+            "tool_name": null,
+            "tool_invoked": false,
+            "fast_convo": true,
+            "warmup_state": "warm",
+            "is_first_turn": false,
+            "cluster_region": "westcentralus",
+            "model_slug": "gpt-6-thinking",
+            "requested_model_experience": "thinking",
+            "product_experience": "chat",
+            "region": null,
+            "is_multimodal": null,
+            "did_auto_switch_to_reasoning": false,
+            "auto_switcher_race_winner": null,
+            "is_autoswitcher_enabled": false,
+            "is_search": null,
+            "did_prompt_contain_image": false,
+            "search_tool_call_count": null,
+            "search_tool_query_types": null,
+            "resume_with_websockets": true,
+            "turn_use_case": "text",
+            "turn_mode": "default"
+          }
+        },
+        {
+          "type": "message_stream_complete"
+        },
+        {
+          "type": "conversation_detail_metadata",
+          "default_model_slug": "gpt-6-thinking"
+        }
+      ],
+      "expected": {
+        "resolvedModel": "gpt-6-thinking",
+        "serverModel": "gpt-6-thinking",
+        "messageModel": "gpt-6-thinking"
+      }
+    },
+    {
+      "label": "user-stop",
+      "fixtures": [
+        {
+          "type": "resume_conversation_token"
+        },
+        {
+          "type": "input_message",
+          "input_message": {
+            "author": {
+              "role": "user"
+            },
+            "status": "finished_successfully"
+          }
+        },
+        {
+          "p": "",
+          "o": "add",
+          "v": {
+            "message": {
+              "author": {
+                "role": "system"
+              },
+              "status": "finished_successfully",
+              "metadata": {
+                "resolved_model_slug": "gpt-6",
+                "model_slug": "gpt-6",
+                "default_model_slug": "gpt-6",
+                "model_switcher_deny": []
+              }
+            }
+          }
+        },
+        {
+          "type": "message_marker"
+        },
+        {
+          "type": "message_marker"
+        },
+        {
+          "v": {
+            "message": {
+              "author": {
+                "role": "assistant"
+              },
+              "status": "finished_successfully",
+              "metadata": {
+                "resolved_model_slug": "gpt-6",
+                "model_slug": "gpt-6",
+                "default_model_slug": "gpt-6",
+                "model_switcher_deny": []
+              },
+              "channel": "final"
+            }
+          }
+        },
+        {
+          "type": "message_marker"
+        }
+      ],
+      "expected": {
+        "resolvedModel": "gpt-6",
+        "serverModel": null,
+        "messageModel": "gpt-6"
+      }
+    },
+    {
+      "label": "web-search",
+      "fixtures": [
+        {
+          "type": "resume_conversation_token"
+        },
+        {
+          "type": "input_message",
+          "input_message": {
+            "author": {
+              "role": "user"
+            },
+            "status": "finished_successfully"
+          }
+        },
+        {
+          "p": "",
+          "o": "add",
+          "v": {
+            "message": {
+              "author": {
+                "role": "assistant"
+              },
+              "status": "finished_successfully",
+              "metadata": {
+                "resolved_model_slug": "gpt-6-thinking",
+                "model_slug": "gpt-6-thinking",
+                "default_model_slug": "gpt-6-thinking",
+                "thinking_effort": "max",
+                "model_switcher_deny": []
+              }
+            }
+          }
+        },
+        {
+          "v": {
+            "message": {
+              "author": {
+                "role": "tool"
+              },
+              "status": "finished_successfully",
+              "metadata": {
+                "resolved_model_slug": "gpt-6-thinking",
+                "model_slug": "gpt-6-thinking",
+                "default_model_slug": "gpt-6-thinking",
+                "thinking_effort": "max",
+                "model_switcher_deny": []
+              }
+            }
+          }
+        },
+        {
+          "v": {
+            "message": {
+              "author": {
+                "role": "tool"
+              },
+              "status": "finished_successfully",
+              "metadata": {
+                "resolved_model_slug": "gpt-6-thinking",
+                "model_slug": "gpt-6-thinking",
+                "default_model_slug": "gpt-6-thinking",
+                "thinking_effort": "max",
+                "model_switcher_deny": []
+              }
+            }
+          }
+        },
+        {
+          "v": {
+            "message": {
+              "author": {
+                "role": "system"
+              },
+              "status": "finished_successfully",
+              "metadata": {
+                "resolved_model_slug": "gpt-6-thinking",
+                "model_slug": "gpt-6-thinking",
+                "default_model_slug": "gpt-6-thinking",
+                "thinking_effort": "max",
+                "model_switcher_deny": []
+              }
+            }
+          }
+        },
+        {
+          "type": "message_marker"
+        },
+        {
+          "v": {
+            "message": {
+              "author": {
+                "role": "assistant"
+              },
+              "status": "finished_successfully",
+              "metadata": {
+                "resolved_model_slug": "gpt-6-thinking",
+                "model_slug": "gpt-6-thinking",
+                "default_model_slug": "gpt-6-thinking",
+                "thinking_effort": "max",
+                "model_switcher_deny": []
+              }
+            }
+          }
+        },
+        {
+          "v": {
+            "message": {
+              "author": {
+                "role": "assistant"
+              },
+              "status": "finished_successfully",
+              "metadata": {
+                "resolved_model_slug": "gpt-6-thinking",
+                "model_slug": "gpt-6-thinking",
+                "default_model_slug": "gpt-6-thinking",
+                "thinking_effort": "max",
+                "model_switcher_deny": []
+              }
+            }
+          }
+        },
+        {
+          "type": "message_marker"
+        },
+        {
+          "type": "message_marker"
+        },
+        {
+          "v": {
+            "message": {
+              "author": {
+                "role": "assistant"
+              },
+              "status": "in_progress",
+              "metadata": {
+                "resolved_model_slug": "gpt-6-thinking",
+                "model_slug": "gpt-6-thinking",
+                "default_model_slug": "gpt-6-thinking",
+                "thinking_effort": "max",
+                "model_switcher_deny": []
+              },
+              "channel": "final"
+            }
+          }
+        },
+        {
+          "o": "patch",
+          "v": [
+            {
+              "p": "/message/content/parts/0",
+              "o": "append"
+            },
+            {
+              "p": "/message/metadata/model_dil_v2/code",
+              "o": "replace"
+            },
+            {
+              "p": "/message/metadata/model_dil_v2/constants",
+              "o": "append"
+            },
+            {
+              "p": "/message/metadata/model_dil_v2/fallbackMarkdown",
+              "o": "append"
+            },
+            {
+              "p": "/message/metadata/model_dil_v2/appData/opGenui/componentResults/25bfac6e-fbcd-5e68-a028-1e13eb99de53",
+              "o": "add",
+              "v": {
+                "status": "resolved"
+              }
+            },
+            {
+              "p": "/message/metadata/model_dil_v2/appData/opGenui/modelDataBindings/turn922243search1",
+              "o": "add"
+            },
+            {
+              "p": "/message/metadata/model_dil_v2",
+              "o": "append"
+            },
+            {
+              "p": "/message/metadata",
+              "o": "append"
+            }
+          ]
+        },
+        {
+          "v": [
+            {
+              "p": "/message/content/parts/0",
+              "o": "append"
+            },
+            {
+              "p": "/message/metadata/model_dil_v2/code",
+              "o": "replace"
+            },
+            {
+              "p": "/message/metadata/model_dil_v2/constants",
+              "o": "append"
+            },
+            {
+              "p": "/message/metadata/model_dil_v2/fallbackMarkdown",
+              "o": "append"
+            },
+            {
+              "p": "/message/metadata/model_dil_v2/recoveryDiagnostics",
+              "o": "remove"
+            },
+            {
+              "p": "/message/metadata/model_dil_v2/requiredComponents/0",
+              "o": "replace"
+            },
+            {
+              "p": "/message/metadata/model_dil_v2/requiredComponents",
+              "o": "append",
+              "v": []
+            },
+            {
+              "p": "/message/metadata/model_dil_v2/appData/opGenui/componentResults/624eac0f-78cb-533b-95ff-98c4c916401a",
+              "o": "add",
+              "v": {
+                "status": "resolved"
+              }
+            },
+            {
+              "p": "/message/metadata/genui_components",
+              "o": "append",
+              "v": [
+                {
+                  "type": "cite"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "v": [
+            {
+              "p": "/message/status",
+              "o": "replace"
+            },
+            {
+              "p": "/message/end_turn",
+              "o": "replace"
+            },
+            {
+              "p": "/message/metadata",
+              "o": "append"
+            }
+          ]
+        },
+        {
+          "type": "message_marker"
+        },
+        {
+          "p": "/message/metadata/conversation_followup_suggestions_eligible",
+          "o": "replace"
+        },
+        {
+          "type": "server_ste_metadata",
+          "metadata": {
+            "server_ttfvt_ms": 4537.557699019089,
+            "conduit_prewarmed": true,
+            "plan_type": "pro",
+            "plan_type_bucket": "paid",
+            "tool_name": "SonicBrowserTool",
+            "tool_invoked": true,
+            "fast_convo": true,
+            "warmup_state": "warm",
+            "is_first_turn": false,
+            "cluster_region": "westcentralus",
+            "model_slug": "gpt-6-thinking",
+            "requested_model_experience": "thinking",
+            "product_experience": "chat",
+            "region": null,
+            "is_multimodal": null,
+            "did_auto_switch_to_reasoning": false,
+            "auto_switcher_race_winner": null,
+            "is_autoswitcher_enabled": false,
+            "is_search": null,
+            "did_prompt_contain_image": false,
+            "search_tool_call_count": null,
+            "search_tool_query_types": null,
+            "resume_with_websockets": true,
+            "turn_use_case": "search",
+            "turn_mode": "default"
+          }
+        },
+        {
+          "type": "message_stream_complete"
+        },
+        {
+          "type": "conversation_detail_metadata",
+          "default_model_slug": "gpt-6-thinking"
+        }
+      ],
+      "expected": {
+        "resolvedModel": "gpt-6-thinking",
+        "serverModel": "gpt-6-thinking",
+        "messageModel": "gpt-6-thinking"
+      }
+    }
+  ]
+}
