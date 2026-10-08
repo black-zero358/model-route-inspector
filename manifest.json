@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "Model Route Inspector",
   "version": "0.1.0",
-  "description": "检测 ChatGPT 每轮对话的请求模型与服务端实际返回模型，发现静默降级、fallback 或路由变化。",
+  "description": "观察 ChatGPT 每轮请求与服务端返回的模型路由元数据、完成状态和端到端计时，提供本地历史与导出。",
   "minimum_chrome_version": "111",
   "permissions": ["storage", "notifications"],
   "host_permissions": [

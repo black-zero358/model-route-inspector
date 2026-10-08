@@ -2,57 +2,42 @@
 <html lang="zh-CN">
 <head>
   <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Model Route Inspector</title>
+  <script src="popup.js"></script>
   <link rel="stylesheet" href="popup.css" />
 </head>
 <body>
   <header class="hdr">
-    <div class="hdr-title">Model Route Inspector</div>
-    <div class="tabs">
-      <button class="tab active" data-tab="records">记录</button>
-      <button class="tab" data-tab="diag">诊断</button>
-    </div>
+    <div><div class="hdr-title">Model Route Inspector</div><div class="hdr-sub">路由证据 · 流状态 · 请求时序</div></div>
+    <nav class="tabs" aria-label="页面">
+      <button class="tab active" data-tab="records" aria-pressed="true">记录</button>
+      <button class="tab" data-tab="diag" aria-pressed="false">诊断</button>
+    </nav>
   </header>
-
-  <!-- ============ 记录页 ============ -->
-  <section id="tab-records" class="tab-panel active">
-    <section class="stats" id="stats"></section>
-
-    <section class="list-wrap">
-      <div class="list-hdr">
-        <span>最近请求</span>
-        <div class="list-hdr-btns">
-          <button id="btn-floating" class="btn tiny ghost">悬浮卡: 开</button>
-          <button id="btn-json" class="btn tiny">JSON</button>
-          <button id="btn-csv" class="btn tiny">CSV</button>
-          <button id="btn-clear" class="btn tiny danger">清空</button>
-        </div>
+  <div id="notice" role="status" aria-live="polite" hidden></div>
+  <section id="tab-records" class="tab-panel active" aria-label="路由历史">
+    <section class="stats" id="stats" aria-label="累计统计"></section>
+    <div class="toolbar">
+      <span id="record-count">最近请求</span>
+      <div class="actions">
+        <button id="btn-refresh" class="btn" title="重新读取历史">刷新</button>
+        <button id="btn-floating" class="btn ghost" aria-pressed="false">悬浮卡</button>
+        <button id="btn-json" class="btn" title="导出全部历史 JSON">JSON</button>
+        <button id="btn-csv" class="btn" title="导出全部历史 CSV">CSV</button>
+        <button id="btn-clear" class="btn danger">清空</button>
       </div>
-      <div id="list" class="list"></div>
-    </section>
-  </section>
-
-  <!-- ============ 诊断页 ============ -->
-  <section id="tab-diag" class="tab-panel">
-    <div class="diag-hdr">
-      <span id="diag-page" class="diag-page"></span>
-      <button id="btn-diag-refresh" class="btn tiny">刷新</button>
     </div>
+    <div class="filters">
+      <input id="filter-query" type="search" aria-label="搜索模型、用途或端点" placeholder="搜索模型 / 用途 / 端点" maxlength="100" />
+      <select id="filter-status" aria-label="按路由状态筛选"><option value="all">全部状态</option><option value="match">一致</option><option value="mismatch">切换</option><option value="conflict">冲突</option><option value="unknown">待确认</option></select>
+    </div>
+    <div id="list" class="list" aria-label="记录列表"></div>
+    <footer>展开查看字段来源；路由一致与回答完成分别判断。导出包含全部历史。</footer>
+  </section>
+  <section id="tab-diag" class="tab-panel" aria-label="采集诊断">
+    <div class="toolbar"><span id="diag-page" class="diag-page"></span><button id="btn-diag-refresh" class="btn">刷新</button></div>
     <div id="diag-body" class="diag-body"></div>
   </section>
-
-  <template id="tpl-item">
-    <div class="item">
-      <div class="item-row">
-        <span class="dot"></span>
-        <span class="time"></span>
-        <span class="models"></span>
-        <span class="status"></span>
-      </div>
-      <div class="detail"></div>
-    </div>
-  </template>
-
-  <script src="popup.js"></script>
 </body>
 </html>
