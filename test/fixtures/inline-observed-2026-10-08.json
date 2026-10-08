@@ -1,0 +1,169 @@
+{
+  "provenance": "Independent 2026-10-08 safe Network structure projection; aliases replace original identifiers; no content, parameters, or credentials. Marker events precede corresponding snapshots as observed. Not generated from expected extension output.",
+  "request": {
+    "model": "gpt-6-thinking",
+    "thinking_effort": "max",
+    "action": "next",
+    "supported_encodings": [
+      "v1"
+    ],
+    "turn_attribution": {
+      "turn_trigger": "composer"
+    },
+    "inputIds": [
+      "m1"
+    ],
+    "local_function_names": [
+      "local.continue_in_work"
+    ],
+    "browser_contextKeys": [
+      "instance_id"
+    ],
+    "client_contextual_infoKeys": [
+      "app_name",
+      "app_surface",
+      "has_web_push_capabilities",
+      "web_push_notification_permission"
+    ]
+  },
+  "responseMessages": [
+    {
+      "id": "m3",
+      "role": "assistant",
+      "recipient": "all",
+      "channel": null,
+      "status": "finished_successfully",
+      "contentType": "model_editable_context",
+      "parent": "m1"
+    },
+    {
+      "id": "m4",
+      "role": "assistant",
+      "recipient": "web.run",
+      "channel": null,
+      "status": "finished_successfully",
+      "contentType": "text",
+      "parent": "m3",
+      "streamingParent": "m1"
+    },
+    {
+      "id": "m5",
+      "role": "tool",
+      "name": "web.run",
+      "recipient": "all",
+      "status": "finished_successfully",
+      "contentType": "text",
+      "parent": "m4",
+      "streamingParent": "m4"
+    },
+    {
+      "id": "m6",
+      "role": "tool",
+      "name": "web.run",
+      "recipient": "all",
+      "status": "finished_successfully",
+      "contentType": "text",
+      "parent": "m5",
+      "streamingParent": "m5"
+    },
+    {
+      "id": "m7",
+      "role": "system",
+      "recipient": "all",
+      "status": "finished_successfully",
+      "contentType": "text",
+      "parent": "m6"
+    },
+    {
+      "id": "m8",
+      "role": "assistant",
+      "recipient": "all",
+      "status": "finished_successfully",
+      "contentType": "thoughts",
+      "parent": "m7",
+      "streamingParent": "m6"
+    },
+    {
+      "id": "m9",
+      "role": "assistant",
+      "recipient": "all",
+      "status": "finished_successfully",
+      "contentType": "reasoning_recap",
+      "parent": "m8",
+      "streamingParent": "m8",
+      "finished_duration_sec": 4,
+      "reasoning_status": "reasoning_ended",
+      "reasoning_recap_type": "hide_all"
+    },
+    {
+      "id": "m10",
+      "role": "assistant",
+      "recipient": "all",
+      "channel": "final",
+      "status": "in_progress",
+      "contentType": "text",
+      "parent": "m9",
+      "streamingParent": "m9"
+    }
+  ],
+  "commonMessageMetadata": {
+    "model_slug": "gpt-6-thinking",
+    "resolved_model_slug": "gpt-6-thinking",
+    "default_model_slug": "gpt-6-thinking",
+    "thinking_effort": "max"
+  },
+  "markers": [
+    {
+      "type": "message_marker",
+      "message_id": "m8",
+      "marker": "cot_token",
+      "event": "first"
+    },
+    {
+      "type": "message_marker",
+      "message_id": "m10",
+      "marker": "user_visible_token",
+      "event": "first"
+    },
+    {
+      "type": "message_marker",
+      "message_id": "m10",
+      "marker": "final_channel_token",
+      "event": "first"
+    },
+    {
+      "type": "message_marker",
+      "message_id": "m10",
+      "marker": "last_token",
+      "event": "last"
+    }
+  ],
+  "completion": {
+    "statusPatch": "finished_successfully",
+    "endTurnPatch": true,
+    "message_stream_complete": true,
+    "DONE": true
+  },
+  "serverMetadata": {
+    "server_ttfvt_ms": 5527.724966988899,
+    "service": null,
+    "tool_name": "SonicBrowserTool",
+    "tool_invoked": true,
+    "is_first_turn": false,
+    "cluster_region": "westcentralus",
+    "model_slug": "gpt-6-thinking",
+    "requested_model_experience": "thinking",
+    "product_experience": "chat",
+    "region": null,
+    "is_multimodal": null,
+    "did_auto_switch_to_reasoning": false,
+    "is_autoswitcher_enabled": false,
+    "is_search": null,
+    "did_prompt_contain_image": false,
+    "search_tool_call_count": null,
+    "search_tool_query_types": null,
+    "resume_with_websockets": true,
+    "turn_use_case": "search",
+    "turn_mode": "default"
+  }
+}

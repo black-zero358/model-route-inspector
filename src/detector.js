@@ -68,6 +68,11 @@
 
       conversationId: null,
       messageId: null,
+      assistantMessageIds: [],
+      inputMessageIds: [],
+      requestAction: null,
+      requestedParentMessageId: null,
+      parentMessageId: null,
       serverRequestId: null,
       turnExchangeId: null,
       turnTraceId: null,
@@ -82,6 +87,7 @@
 
       requestedExperience: null,
       thinkingEffort: null,
+      requestedThinkingEffort: null,
 
       isAutoswitcherEnabled: null,
       didAutoSwitchToReasoning: null,
@@ -115,6 +121,8 @@
       // task
       toolInvoked: null,
       toolName: null,
+      toolCalls: [],
+      toolEvidence: 'not_observed',
       isSearch: null,
       searchToolCallCount: null,
       searchToolQueryTypes: null,
@@ -124,6 +132,8 @@
       // timing
       responseHeadersMs: null,
       firstTextMs: null,
+      firstTokenMs: null,
+      firstTokenSource: null,
       firstReasoningMs: null,
       completionMs: null,
       timingSource: null,
@@ -177,6 +187,46 @@
   const own = function (o, k) { return Object.prototype.hasOwnProperty.call(o, k); };
   function sensitive(k) { return SENSITIVE_KEYS.has(k.toLowerCase()) || /token|cookie|authorization|credential|password|secret|user.agent/i.test(k); }
   function valueType(v) { return v === null ? 'null' : Array.isArray(v) ? 'array' : typeof v; }
+  function safeIdentifier(v) { return typeof v === 'string' && /^[a-zA-Z0-9_-]{1,128}$/.test(v); }
+  function addAssistantId(rec, id, path) {
+    if (!rec || !safeIdentifier(id)) return;
+    const ids = rec.assistantMessageIds || (rec.assistantMessageIds = []);
+    if (ids.indexOf(id) < 0 && ids.length < 32) ids.push(id);
+    mark(rec, 'messageId', id, path, 'string');
+  }
+  // A server summary proves a name, not a per-call count or a successful result.
+  function finalizeTools(rec) {
+    if (Array.isArray(rec.toolCalls) && rec.toolCalls.length) { rec.toolEvidence = 'observed'; return; }
+    if (!rec.toolInvoked || typeof rec.toolName !== 'string' || !/^[a-zA-Z][a-zA-Z0-9_.:-]{0,79}$/.test(rec.toolName)) return;
+    rec.toolEvidence = 'observed';
+    rec.toolCalls = [{ name: rec.toolName, count: null, status: 'observed', durationMs: null }];
+  }
+  function observeTool(rec, name) {
+    if (!rec || typeof name !== 'string' || name === 'all' || !/^[a-zA-Z][a-zA-Z0-9_.:-]{0,79}$/.test(name)) return;
+    const calls = rec.toolCalls || (rec.toolCalls = []);
+    if (calls.length < 32 && !calls.some(call => call.name === name)) calls.push({ name: name, count: null, status: 'observed', durationMs: null });
+    rec.toolEvidence = 'observed';
+  }
+  function isCurrentMessage(state, id, rec) {
+    const node = state.messageNodes && state.messageNodes.get(id);
+    if (!node) return false;
+    if (node.active) return true;
+    if (!rec || !Array.isArray(rec.inputMessageIds) || rec.inputMessageIds.length !== 1) return false;
+    const seen = new Set(); let parent = node.parent;
+    for (let i = 0; parent && i < 64 && !seen.has(parent); i++) {
+      if (parent === rec.inputMessageIds[0]) return true;
+      seen.add(parent); const ancestor = state.messageNodes.get(parent); parent = ancestor && ancestor.parent;
+    }
+    return false;
+  }
+  function isAssociatedAssistant(state, id, rec) {
+    const node = state.messageNodes && state.messageNodes.get(id);
+    return !!node && node.role === 'assistant' && node.tokenEligible && isCurrentMessage(state, id, rec);
+  }
+  function finalizeCapture(rec, state) {
+    if (!state.messageNodes) return;
+    state.messageNodes.forEach(function (node, id) { if (node.role === 'assistant' && isCurrentMessage(state, id, rec)) observeTool(rec, node.recipient); });
+  }
 
   function mark(rec, key, val, path, type) {
     rec.fieldSources = rec.fieldSources || {};
@@ -200,14 +250,17 @@
   // Patch paths are interpreted for known metadata keys, never replayed into a full message.
   function inspectEvent(obj, rec, diag, state) {
     state = state || {};
-    const result = { generation: false, text: false, reasoning: false, complete: false, limited: false };
+    const result = { generation: false, text: false, reasoning: false, complete: false, limited: false, tokenSource: null };
     const stack = [{ value: obj, path: '', depth: 0 }], seen = new Set();
     let visits = 0;
     function fields(o, path, server) {
+      // Legacy response envelopes exposed the pair directly. Preserve that metadata
+      // without promoting it into an authenticated assistant association.
+      if (rec && !path && !server && state.role == null && (!o.type || o.type === 'response_created') && safeIdentifier(o.conversation_id) && safeIdentifier(o.message_id) && (!rec.assistantMessageIds || rec.assistantMessageIds.length === 0)) mark(rec, 'messageId', o.message_id, 'message_id', 'string');
       Object.keys(o).slice(0, 256).forEach(function (k) {
         if (sensitive(k)) return;
         const spec = FIELDS[k];
-        if (spec && rec) {
+        if (spec && rec && k !== 'message_id') {
           const key = k === 'model_slug' && server ? 'serverModel' : spec[0];
           mark(rec, key, o[k], path ? path + '.' + k : k, spec[1]);
         } else if (server && !KNOWN_META_KEYS.has(k) && diag && typeof diag.addUnknownMetaKey === 'function' && /^[a-zA-Z0-9_.-]{1,80}$/.test(k)) {
@@ -223,20 +276,39 @@
     function message(m, path) {
       const role = m.author && m.author.role;
       state.role = role || null; state.channel = typeof m.channel === 'string' ? m.channel : null;
+      state.recipient = typeof m.recipient === 'string' ? m.recipient : null;
+      state.contentType = m.content && m.content.content_type;
+      state.messageId = safeIdentifier(m.id) ? m.id : null;
+      state.activeAssistant = role === 'assistant' && m.status === 'in_progress';
+      state.currentAssistantGeneration = state.activeAssistant;
+      state.messageStatus = m.status == null ? null : m.status === 'in_progress' ? 'in_progress' : 'finished';
+      state.messageNodes = state.messageNodes || new Map();
+      if (state.messageId && (state.messageNodes.has(state.messageId) || state.messageNodes.size < 128)) state.messageNodes.set(state.messageId, {
+        role: ['assistant', 'tool', 'user', 'system'].indexOf(role) >= 0 ? role : 'other', parent: m.metadata && safeIdentifier(m.metadata.parent_id) ? m.metadata.parent_id : null,
+        active: state.activeAssistant || !!(state.messageNodes.get(state.messageId) && state.messageNodes.get(state.messageId).active), recipient: state.recipient && /^[a-zA-Z][a-zA-Z0-9_.:-]{0,79}$/.test(state.recipient) ? state.recipient : null,
+        tokenEligible: (!state.recipient || state.recipient === 'all') && (!state.contentType || state.contentType === 'text' || state.contentType === 'thoughts')
+      });
+      state.assistantCandidates = state.assistantCandidates || new Set();
+      if (role === 'assistant' && (!state.recipient || state.recipient === 'all') && state.messageId && state.assistantCandidates.size < 64) state.assistantCandidates.add(state.messageId);
       // Legacy messages had model directly without author; current metadata needs an assistant role.
       if (rec && (!role || role === 'assistant')) {
-        if (own(m, 'id')) mark(rec, 'messageId', m.id, path + '.id', 'string');
+        if (!role && own(m, 'id')) mark(rec, 'messageId', m.id, path + '.id', 'string');
+        if (state.activeAssistant && (!state.recipient || state.recipient === 'all')) addAssistantId(rec, m.id, path + '.id');
         if (own(m, 'conversation_id')) mark(rec, 'conversationId', m.conversation_id, path + '.conversation_id', 'string');
-        if (own(m, 'model')) mark(rec, 'messageModel', m.model, path + '.model', 'string');
+        if (own(m, 'model') && (!role || !state.messageId || isCurrentMessage(state, state.messageId, rec))) mark(rec, 'messageModel', m.model, path + '.model', 'string');
       }
       if (role !== 'assistant') return;
+      if (isCurrentMessage(state, state.messageId, rec)) observeTool(rec, state.recipient);
+      // Identified finished snapshots without current-turn ancestry may be replayed history.
+      if (state.messageId && !isCurrentMessage(state, state.messageId, rec)) return;
       if (m.metadata && typeof m.metadata === 'object' && !Array.isArray(m.metadata)) {
+        if (rec && !rec.parentMessageId && safeIdentifier(m.metadata.parent_id)) mark(rec, 'parentMessageId', m.metadata.parent_id, path + '.metadata.parent_id', 'string');
         fields(m.metadata, path + '.metadata', false);
         if (rec && own(m.metadata, 'model_slug')) mark(rec, 'messageModel', m.metadata.model_slug, path + '.metadata.model_slug', 'string');
         if (own(m.metadata, 'resolved_model_slug') || own(m.metadata, 'default_model_slug')) result.generation = true;
       }
       const parts = m.content && m.content.parts;
-      if (Array.isArray(parts)) parts.slice(0, 128).forEach(function (part) { textObserved(part, state.channel); });
+      if (Array.isArray(parts) && (state.activeAssistant || isCurrentMessage(state, state.messageId, rec) || !state.messageId && m.status == null) && (!state.recipient || state.recipient === 'all') && (!state.contentType || state.contentType === 'text')) parts.slice(0, 128).forEach(function (part) { textObserved(part, state.channel); });
     }
     while (stack.length) {
       const item = stack.pop(), o = item.value, path = item.path;
@@ -252,9 +324,14 @@
       if (patchPath && patchPath[0] === '/' && own(o, 'v')) {
         if (patchPath === '/message/author/role') state.role = o.v;
         if (patchPath === '/message/channel') state.channel = o.v;
+        if (patchPath === '/message/recipient') { state.recipient = typeof o.v === 'string' ? o.v : null; if (state.role === 'assistant' && isCurrentMessage(state, state.messageId, rec)) observeTool(rec, state.recipient); }
+        if (patchPath === '/message/content/content_type') state.contentType = o.v;
+        if (patchPath === '/message/status') { state.activeAssistant = state.role === 'assistant' && o.v === 'in_progress'; state.messageStatus = o.v == null ? null : o.v === 'in_progress' ? 'in_progress' : 'finished'; if (state.activeAssistant) state.currentAssistantGeneration = true; }
+        if (patchPath === '/message/id') { state.messageId = safeIdentifier(o.v) ? o.v : null; if (state.role === 'assistant') { state.assistantCandidates = state.assistantCandidates || new Set(); if (state.messageId && state.assistantCandidates.size < 64) state.assistantCandidates.add(state.messageId); } }
         if (patchPath === '/message' && o.v && typeof o.v === 'object') message(o.v, path + '.v');
         if (state.role === 'assistant') {
-          if (/^\/message\/content\/parts\/\d+$/.test(patchPath)) textObserved(o.v, state.channel);
+          if (/^\/message\/content\/parts\/\d+$/.test(patchPath) && (state.currentAssistantGeneration || isCurrentMessage(state, state.messageId, rec) || !state.messageId && state.messageStatus == null) && (!state.recipient || state.recipient === 'all') && (!state.contentType || state.contentType === 'text')) { textObserved(o.v, state.channel); if (typeof o.v === 'string' && o.v.length) addAssistantId(rec, state.messageId, path + '.v'); }
+          if (state.activeAssistant && (!state.recipient || state.recipient === 'all')) addAssistantId(rec, state.messageId, path + '.v');
           if (patchPath === '/message/metadata' && o.v && typeof o.v === 'object') {
             fields(o.v, path + '.v', false);
             if (rec && own(o.v, 'model_slug')) mark(rec, 'messageModel', o.v.model_slug, path + '.v.model_slug', 'string');
@@ -270,14 +347,19 @@
         continue;
       }
       if (typeof o.type === 'string' && GENERATION_MARKERS.indexOf(o.type) !== -1) result.generation = true;
+      if (o.type === 'message_marker' && o.event === 'first' && safeIdentifier(o.message_id)) {
+        if (o.marker === 'cot_token') result.tokenMarker = { id: o.message_id, source: 'marker.reasoning' };
+        else if (o.marker === 'user_visible_token' || o.marker === 'final_channel_token') result.tokenMarker = { id: o.message_id, source: 'marker.user_visible' };
+      }
       for (let i = 0; i < GENERATION_MARKERS.length; i++) if (own(o, GENERATION_MARKERS[i])) result.generation = true;
       if (o.type === 'message_stream_complete') result.complete = true;
+      if (o.type === 'message_stream_complete' && isAssociatedAssistant(state, o.message_id, rec)) addAssistantId(rec, o.message_id, path ? path + '.message_id' : 'message_id');
       if (rec) fields(o, path, false);
       if (o.type === 'server_ste_metadata' && o.metadata && typeof o.metadata === 'object') fields(o.metadata, path ? path + '.metadata' : 'metadata', true);
       else if (o.metadata && typeof o.metadata === 'object' && !Array.isArray(o.metadata)) fields(o.metadata, path ? path + '.metadata' : 'metadata', false);
       if (o.message && typeof o.message === 'object') message(o.message, path ? path + '.message' : 'message');
       if (o.type === 'delta' && o.delta && Array.isArray(o.delta.content)) {
-        o.delta.content.slice(0, 128).forEach(function (part) { if (part && part.type === 'text') textObserved(part.text, state.channel); });
+        if (state.role === 'assistant' && (state.currentAssistantGeneration || isCurrentMessage(state, state.messageId, rec) || !state.messageId && state.messageStatus == null) && (!state.recipient || state.recipient === 'all')) o.delta.content.slice(0, 128).forEach(function (part) { if (part && part.type === 'text') textObserved(part.text, state.channel); });
       }
       if (o.v && typeof o.v === 'object') stack.push({ value: o.v, path: path ? path + '.v' : 'v', depth: item.depth + 1 });
     }
@@ -288,6 +370,15 @@
   function extractFields(obj, rec, diag, state) { return inspectEvent(obj, rec, diag, state); }
 
   function finalizeTiming(rec) {
+    const text = rec.firstTextMs, reasoning = rec.firstReasoningMs;
+    if (text != null || reasoning != null) {
+      const firstText = text == null ? reasoning : reasoning == null ? text : Math.min(text, reasoning);
+      if (rec.firstTokenMs == null || firstText < rec.firstTokenMs) {
+        rec.firstTokenMs = firstText;
+        rec.firstTokenSource = reasoning != null && (text == null || reasoning < text) ? 'assistant.reasoning' : 'assistant.text';
+      }
+    }
+    finalizeTools(rec);
     if (rec.reasoningStartTime != null && rec.reasoningEndTime != null) {
       const duration = (rec.reasoningEndTime - rec.reasoningStartTime) * 1000;
       if (Number.isFinite(duration) && duration >= 0) rec.reasoningDurationMs = Math.round(duration);
@@ -370,6 +461,8 @@
     createRecord: createRecord,
     extractFields: extractFields,
     isGenerationEvent: isGenerationEvent,
+    isAssociatedAssistant: isAssociatedAssistant,
+    finalizeCapture: finalizeCapture,
     finalizeTiming: finalizeTiming,
     judge: judge,
     prettyModel: prettyModel,

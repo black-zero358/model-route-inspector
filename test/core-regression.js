@@ -44,6 +44,88 @@ async function consume(h, input = '/backend-api/f/conversation', init) {
 }
 (async () => {
   {
+    const rec = detector.createRecord('binding'), state = {}; rec.inputMessageIds = ['input-one'];
+    detector.extractFields({ message: { id: 'old-assistant', author: { role: 'assistant' }, status: 'finished_successfully', content: { content_type: 'model_editable_context', parts: ['private context'] } } }, rec, null, state);
+    check('finished context snapshot is not a new reply association', rec.assistantMessageIds.length === 0);
+    const legacy = detector.createRecord('legacy');
+    detector.extractFields({ conversation_id: 'legacy-conversation', message_id: 'legacy-message' }, legacy);
+    check('legacy top-level conversation/message pair preserves metadata without assistant promotion', legacy.messageId === 'legacy-message' && legacy.conversationId === 'legacy-conversation' && legacy.assistantMessageIds.length === 0);
+    detector.extractFields({ type: 'message_marker', conversation_id: 'legacy-conversation', message_id: 'old-marker', marker: 'cot_token', event: 'first' }, legacy);
+    check('bare marker cannot overwrite legacy metadata or promote a reply association', legacy.messageId === 'legacy-message' && legacy.assistantMessageIds.length === 0);
+    const noId = detector.createRecord('no-id'), noIdState = {};
+    const activeNoId = detector.extractFields({ message: { author: { role: 'assistant' }, channel: 'final', status: 'in_progress', content: { content_type: 'text', parts: ['synthetic active answer'] } } }, noId, null, noIdState);
+    check('active assistant without optional ID permits text timing but no reply association', activeNoId.text && noId.assistantMessageIds.length === 0 && noId.messageId === null);
+    const finishedNoId = detector.extractFields({ message: { author: { role: 'assistant' }, channel: 'final', status: 'finished_successfully', content: { content_type: 'text', parts: ['synthetic finished snapshot'] } } }, noId, null, noIdState);
+    const finishedPatch = detector.extractFields({ p: '/message/content/parts/0', o: 'append', v: 'synthetic finished tail' }, noId, null, noIdState);
+    check('finished unassociated no-ID assistant snapshot and patches cannot create text timing', !finishedNoId.text && !finishedPatch.text && noId.assistantMessageIds.length === 0);
+    const call = { id: 'call-one', author: { role: 'assistant' }, recipient: 'web.run', status: 'finished_successfully', content: { content_type: 'text', parts: ['private tool arguments'] }, metadata: { parent_id: 'input-one' } };
+    const toolSummary = detector.extractFields({ message: call }, rec, null, state);
+    detector.extractFields({ message: call }, rec, null, state);
+    detector.extractFields({ message: { id: 'tool-result-a', author: { role: 'tool', name: 'web.run' }, content: { parts: ['private result'] } } }, rec, null, state);
+    detector.extractFields({ message: { id: 'tool-result-b', author: { role: 'tool', name: 'web.run' }, content: { parts: ['private result 2'] } } }, rec, null, state);
+    check('tool invocation/result content is not first assistant text or reply ID', !toolSummary.text && rec.assistantMessageIds.length === 0 && rec.messageId === null);
+    detector.extractFields({ message: { id: 'answer-one', author: { role: 'assistant' }, recipient: 'all', channel: 'final', status: 'in_progress', content: { content_type: 'text', parts: [] } } }, rec, null, state);
+    detector.extractFields({ p: '/message/content/parts/0', v: 'private final text' }, rec, null, state);
+    detector.extractFields({ message: { id: 'answer-one', author: { role: 'assistant' }, recipient: 'all', channel: 'final', status: 'finished_successfully', content: { content_type: 'text', parts: [] } } }, rec, null, state);
+    detector.extractFields({ type: 'message_stream_complete', message_id: 'answer-one', conversation_id: 'conv-one' }, rec, null, state);
+    detector.extractFields({ type: 'server_ste_metadata', metadata: { message_id: 'tool-result-b', tool_invoked: true, tool_name: 'SonicBrowserTool' } }, rec, null, state);
+    rec.firstTextMs = 120; rec.firstReasoningMs = 50; detector.finalizeTiming(rec);
+    check('final assistant identity survives finished snapshot and tool ID cannot overwrite it', rec.messageId === 'answer-one' && rec.assistantMessageIds.join(',') === 'answer-one' && detector.isAssociatedAssistant(state, 'answer-one', rec));
+    check('tool names deduplicate while unknown counts/durations/status stay explicit', rec.toolCalls.length === 1 && rec.toolCalls[0].name === 'web.run' && rec.toolCalls[0].count === null && rec.toolCalls[0].durationMs === null && rec.toolCalls[0].status === 'observed' && rec.toolEvidence === 'observed');
+    check('first observable assistant text includes reasoning with a clear source', rec.firstTokenMs === 50 && rec.firstTokenSource === 'assistant.reasoning');
+    check('identity/tool projection retains no arguments or result content', !JSON.stringify(rec).includes('private'));
+    const unknown = detector.createRecord('unknown'); detector.finalizeTiming(unknown);
+    check('missing tool or first text evidence never becomes zero', unknown.firstTokenMs === null && unknown.toolEvidence === 'not_observed' && unknown.toolCalls.length === 0);
+    const h = harness(async () => sse(generation));
+    const requestRec = await consume(h, '/backend-api/f/conversation', { method: 'POST', body: JSON.stringify({ model: 'gpt-6', thinking_effort: 'max', conversation_id: 'conv-one', messages: [{ id: 'input-one', author: { role: 'user' }, content: { parts: ['private user content'] } }, { id: 'history-assistant', author: { role: 'assistant' } }] }) });
+    check('request effort/user identity safely projected and distinct from response', requestRec.requestedThinkingEffort === 'max' && requestRec.thinkingEffort === null && requestRec.inputMessageIds.join(',') === 'input-one' && requestRec.conversationId === 'conv-one' && !JSON.stringify(requestRec).includes('private user'));
+    const transient = h.messages.find(m => m.type === 'request-context');
+    check('generation context sends only bounded safe association metadata', transient.context.requestId === requestRec.requestId && transient.context.inputMessageIds.join(',') === 'input-one' && !JSON.stringify(transient).includes('private'));
+    const variant = harness(async () => { await wait(30); return sse(generation); });
+    const variantFetch = variant.context.fetch('/backend-api/f/conversation', { method: 'POST', body: JSON.stringify({ model: 'gpt-6', action: 'variant', messages: [], parent_message_id: 'input-one', conversation_id: 'conv-one' }) });
+    await until(() => variant.messages.some(m => m.type === 'request-context'));
+    const variantContext = variant.messages.find(m => m.type === 'request-context').context;
+    check('empty-input variant sends exact parent separately before response completes', variantContext.requestAction === 'variant' && variantContext.requestedParentMessageId === 'input-one' && variantContext.inputMessageIds.length === 0 && variant.records().length === 0);
+    await (await variantFetch).text(); await until(() => variant.records().length);
+    const variantRec = variant.records()[0];
+    check('variant record preserves empty actual inputs and request parent provenance', variantRec.inputMessageIds.length === 0 && variantRec.requestAction === 'variant' && variantRec.requestedParentMessageId === 'input-one' && variantRec.fieldSources.requestedParentMessageId === 'request.body.parent_message_id' && variantRec.fieldSources.requestAction === 'request.body.action');
+    const normalParent = await consume(harness(async () => sse(generation)), '/backend-api/f/conversation', { method: 'POST', body: JSON.stringify({ model: 'gpt-6', action: 'next', messages: [], parent_message_id: 'previous-assistant' }) });
+    check('request parent never becomes a fabricated user input or response parent', normalParent.inputMessageIds.length === 0 && normalParent.requestedParentMessageId === 'previous-assistant' && normalParent.parentMessageId === null);
+    const invalidParent = await consume(harness(async () => sse(generation)), '/backend-api/f/conversation', { method: 'POST', body: JSON.stringify({ model: 'gpt-6', action: 'private action', parent_message_id: 'unsafe id', messages: [] }) });
+    check('opaque action and unsafe parent stay unknown at MAIN boundary', invalidParent.requestAction === null && invalidParent.requestedParentMessageId === null);
+    const markerEvents = [
+      { type: 'message_marker', marker: 'cot_token', event: 'first', message_id: 'old-reasoning' },
+      { message: { id: 'old-reasoning', author: { role: 'assistant' }, status: 'finished_successfully', content: { content_type: 'thoughts' }, metadata: { parent_id: 'old-input' } } },
+      { type: 'message_marker', marker: 'cot_token', event: 'first', message_id: 'new-reasoning' },
+      { message: { id: 'new-reasoning', author: { role: 'assistant' }, status: 'finished_successfully', content: { content_type: 'thoughts' }, metadata: { parent_id: 'input-one' } } },
+      { type: 'message_marker', marker: 'user_visible_token', event: 'first', message_id: 'answer-marker' },
+      { message: { id: 'answer-marker', author: { role: 'assistant' }, channel: 'final', recipient: 'all', status: 'in_progress', content: { content_type: 'text', parts: [] }, metadata: { parent_id: 'new-reasoning' } } },
+      { type: 'message_stream_complete', message_id: 'answer-marker' }
+    ];
+    const mh = harness(() => Promise.resolve(sse(markerEvents)));
+    const mr = await consume(mh, '/backend-api/f/conversation', { method: 'POST', body: '{"model":"gpt-6","messages":[{"id":"input-one","author":{"role":"user"}}]}' });
+    check('pre-snapshot current-turn marker resolves using exact assistant ancestry', mr.firstTokenMs != null && mr.firstTokenSource === 'marker.reasoning' && mr.firstTextMs === null && mr.assistantMessageIds.join(',') === 'answer-marker');
+    const stale = harness(() => Promise.resolve(sse(markerEvents.slice(0, 2))));
+    const sr = await consume(stale, '/backend-api/f/conversation', { method: 'POST', body: '{"model":"gpt-6","messages":[{"id":"input-one","author":{"role":"user"}}]}' });
+    check('replayed old marker and finished snapshot cannot contaminate TTFT', sr.firstTokenMs === null && sr.firstTokenSource === null && sr.assistantMessageIds.length === 0);
+    const staleRec = detector.createRecord('stale'), staleState = {}; staleRec.inputMessageIds = ['current-user'];
+    const staleText = detector.extractFields({ message: { id: 'old-answer', author: { role: 'assistant' }, recipient: 'all', channel: 'final', status: 'finished_successfully', content: { content_type: 'text', parts: ['old private text'] }, metadata: { parent_id: 'old-user' } } }, staleRec, null, staleState);
+    detector.extractFields({ message: { id: 'old-call', author: { role: 'assistant' }, recipient: 'web.run', status: 'finished_successfully', content: { content_type: 'text', parts: ['old private arguments'] }, metadata: { parent_id: 'old-user' } } }, staleRec, null, staleState);
+    detector.extractFields({ type: 'message_stream_complete', message_id: 'old-answer' }, staleRec, null, staleState);
+    detector.finalizeCapture(staleRec, staleState); detector.finalizeTiming(staleRec);
+    check('historical finished reply/tool snapshots and completion IDs cannot spoof current reply', !staleText.text && staleRec.firstTokenMs === null && staleRec.toolCalls.length === 0 && staleRec.assistantMessageIds.length === 0);
+    const observed = require('./fixtures/inline-observed-2026-10-08.json'), events = [];
+    for (const m of observed.responseMessages) {
+      observed.markers.filter(marker => marker.message_id === m.id && marker.event === 'first').forEach(marker => events.push(marker));
+      events.push({ v: { message: { id: m.id, author: { role: m.role, ...(m.name ? { name: m.name } : {}) }, channel: m.channel, recipient: m.recipient, status: m.status, content: { content_type: m.contentType }, metadata: { ...observed.commonMessageMetadata, parent_id: m.parent, streaming_parent_id: m.streamingParent } } } });
+    }
+    events.push({ type: 'server_ste_metadata', metadata: observed.serverMetadata }, { type: 'message_stream_complete', message_id: 'm10' });
+    const liveShape = harness(() => Promise.resolve(sse(events)));
+    const replay = await consume(liveShape, '/backend-api/f/conversation', { method: 'POST', body: JSON.stringify({ model: observed.request.model, thinking_effort: observed.request.thinking_effort, messages: observed.request.inputIds.map(id => ({ id, author: { role: 'user' } })) }) });
+    check('independent current search projection resolves ancestry and final ID', replay.messageId === 'm10' && replay.assistantMessageIds.join(',') === 'm10' && replay.inputMessageIds.join(',') === 'm1' && replay.firstTokenSource === 'marker.reasoning');
+    check('independent search projection retains web.run and separates requested/response effort', replay.toolCalls.length === 1 && replay.toolCalls[0].name === 'web.run' && replay.toolCalls[0].count === null && replay.requestedThinkingEffort === 'max' && replay.thinkingEffort === 'max' && replay.serverTtfvt === observed.serverMetadata.server_ttfvt_ms && replay.firstTextMs === null);
+  }
+  {
     const evs = [], parser = createParser(event => evs.push(event));
     parser.feed('\uFEFFdata: {"a":1}\r'); parser.feed('\ndata: {"b":2}\r\rdata: [DONE]'); parser.end(); parser.end();
     check('BOM/CR/chunked CRLF recovery and idempotent end', evs.length === 2 && evs[0].parseError && evs[1].done && evs[1].unterminated);

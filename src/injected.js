@@ -60,7 +60,18 @@
   }
   function parseModel(text) {
     if (typeof text !== 'string' || text.length > 2 * 1024 * 1024) return null;
-    try { const body = JSON.parse(text); return body && typeof body.model === 'string' && body.model.length <= 256 ? body.model : null; }
+    try {
+      const body = JSON.parse(text);
+      if (!body || typeof body !== 'object' || Array.isArray(body)) return null;
+      const safeId = v => typeof v === 'string' && /^[a-zA-Z0-9_-]{1,128}$/.test(v);
+      const effortKey = Object.prototype.hasOwnProperty.call(body, 'thinking_effort') ? 'thinking_effort' : 'reasoning_effort';
+      return { model: typeof body.model === 'string' && body.model.length <= 256 ? body.model : null,
+        effort: typeof body[effortKey] === 'string' && /^[a-zA-Z0-9_-]{1,40}$/.test(body[effortKey]) ? body[effortKey] : null,
+        effortKey: effortKey, conversationId: safeId(body.conversation_id) ? body.conversation_id : null,
+        requestAction: ['next', 'variant', 'continue'].includes(body.action) ? body.action : null,
+        requestedParentMessageId: safeId(body.parent_message_id) ? body.parent_message_id : null,
+        inputMessageIds: Array.isArray(body.messages) && body.messages.length <= 32 ? Array.from(new Set(body.messages.filter(m => m && m.author && m.author.role === 'user' && safeId(m.id)).map(m => m.id))) : [] };
+    }
     catch (_) { return null; }
   }
   function timeoutPromise(ms, onTimeout) {
@@ -108,6 +119,13 @@
     let reader, parser, idleTimer;
     let matched = false, preMatchBytes = 0, limited = false;
     const eventState = {};
+    const pendingMarkers = new Map();
+    function resolveMarkers() {
+      pendingMarkers.forEach(function (marker, id) {
+        if (!MRI.isAssociatedAssistant || !MRI.isAssociatedAssistant(eventState, id, rec)) return;
+        if (rec.firstTokenMs == null || marker.ms < rec.firstTokenMs) { rec.firstTokenMs = marker.ms; rec.firstTokenSource = marker.source; }
+      });
+    }
     function complete(signal) {
       if (rec.completionSignals.indexOf(signal) < 0) rec.completionSignals.push(signal);
       rec.streamComplete = true; ctx.streamComplete = true;
@@ -153,6 +171,8 @@
         // An empty STE block is still an observed block.
         if (event.data.type === 'server_ste_metadata') ctx.hasServerSte = true;
         if (summary.complete && !event.unterminated) complete('message_stream_complete');
+        if (summary.tokenMarker && pendingMarkers.size < 64 && !pendingMarkers.has(summary.tokenMarker.id)) pendingMarkers.set(summary.tokenMarker.id, { source: summary.tokenMarker.source, ms: elapsed(start) });
+        resolveMarkers();
         if (summary.text && rec.firstTextMs == null) rec.firstTextMs = elapsed(start);
         if (summary.reasoning && rec.firstReasoningMs == null) rec.firstReasoningMs = elapsed(start);
         if ((summary.text || summary.reasoning) && rec.firstDeltaMs == null) rec.firstDeltaMs = elapsed(start);
@@ -188,12 +208,28 @@
       // End time belongs to the stream, never to a model-body read or another request.
       rec.endedAt = Date.now(); rec.totalMs = elapsed(start); ctx.endedAt = rec.endedAt;
       if (matched) {
-        try { rec.requestedModel = await requestedPromise; } catch (_) {}
+        try {
+          const requested = await requestedPromise;
+          if (requested) {
+            rec.requestedModel = requested.model;
+            rec.requestedThinkingEffort = requested.effort;
+            rec.inputMessageIds = requested.inputMessageIds;
+            rec.requestAction = requested.requestAction;
+            rec.requestedParentMessageId = requested.requestedParentMessageId;
+            if (!rec.conversationId && requested.conversationId) {
+              rec.conversationId = requested.conversationId;
+              rec.fieldSources.conversationId = 'request.body.conversation_id'; rec.fieldStates.conversationId = 'value';
+            }
+            if (requested.effort) { rec.fieldSources.requestedThinkingEffort = 'request.body.' + requested.effortKey; rec.fieldStates.requestedThinkingEffort = 'value'; }
+            if (requested.requestAction) { rec.fieldSources.requestAction = 'request.body.action'; rec.fieldStates.requestAction = 'value'; }
+            if (requested.requestedParentMessageId) { rec.fieldSources.requestedParentMessageId = 'request.body.parent_message_id'; rec.fieldStates.requestedParentMessageId = 'value'; }
+          }
+        } catch (_) {}
         if (rec.requestedModel != null) {
           rec.fieldSources.requestedModel = 'request.body.model';
           rec.fieldStates.requestedModel = rec.requestedModel === '' ? 'empty' : 'value';
         }
-        MRI.finalizeTiming(rec); MRI.judge(rec);
+        resolveMarkers(); if (MRI.finalizeCapture) MRI.finalizeCapture(rec, eventState); MRI.finalizeTiming(rec); MRI.judge(rec);
         ctx.hasRequested = !!rec.requestedModel; ctx.judgment = rec.status;
         ctx.requestedModel = rec.requestedModel; ctx.resolvedModel = rec.resolvedModel; ctx.serverModel = rec.serverModel;
         diag.records++; post({ type: 'record', record: rec });
@@ -219,6 +255,14 @@
     Object.assign(rec, { endpoint: ctx.endpoint, startedAt: startedAt,
       timingSource: hasPerformance ? 'performance.now' : 'date.now' });
     const requestedPromise = readRequestedModel(input, init);
+    requestedPromise.then(function (requested) {
+      if (requested) {
+        rec.inputMessageIds = requested.inputMessageIds;
+        rec.requestAction = requested.requestAction;
+        rec.requestedParentMessageId = requested.requestedParentMessageId;
+        post({ type: 'request-context', context: { requestId: requestId, inputMessageIds: requested.inputMessageIds, conversationId: requested.conversationId, requestAction: requested.requestAction, requestedParentMessageId: requested.requestedParentMessageId } });
+      }
+    }).catch(function () {});
     post({ type: 'request-start', requestId: requestId, url: ctx.url, at: startedAt });
     let fetchPromise;
     try { fetchPromise = origFetch.apply(this, arguments); }
